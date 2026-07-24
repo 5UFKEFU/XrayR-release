@@ -102,16 +102,40 @@ for protocol in "${protocol_list[@]}"; do
 done
 if [[ "$needs_certificate" == 1 ]]; then
   if [[ "$CERT_MODE" == "letsencrypt" ]]; then
-    systemctl stop nginx 2>/dev/null || true
+    domain_ips="$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u)"
+    if ! grep -Fxq "$PUBLIC_IP" <<<"$domain_ips"; then
+      echo "域名 $DOMAIN 尚未解析到本机公网 IP $PUBLIC_IP" >&2
+      echo "当前 IPv4 解析: ${domain_ips:-无}" >&2
+      echo "请先创建 DNS-only A 记录，等待解析生效后重新运行脚本。" >&2
+      exit 1
+    fi
+
+    nginx_was_active=0
+    if systemctl is-active --quiet nginx; then
+      nginx_was_active=1
+      systemctl stop nginx
+    fi
+    if ss -H -ltn 'sport = :80' | grep -q .; then
+      [[ "$nginx_was_active" == 1 ]] && systemctl start nginx
+      echo "80 端口仍被其他程序占用，无法完成 Let's Encrypt HTTP-01 验证：" >&2
+      ss -ltnp 'sport = :80' >&2 || true
+      exit 1
+    fi
+
     cert_args=(certonly --standalone --non-interactive --agree-tos -d "$DOMAIN")
     if [[ -n "$LE_EMAIL" ]]; then
       cert_args+=(--email "$LE_EMAIL")
     else
       cert_args+=(--register-unsafely-without-email)
     fi
-    certbot "${cert_args[@]}"
+    if ! certbot "${cert_args[@]}"; then
+      [[ "$nginx_was_active" == 1 ]] && systemctl start nginx
+      echo "Let's Encrypt 证书申请失败；nginx 已恢复到申请前状态。" >&2
+      exit 1
+    fi
     cp -L "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$CERT_DIR/fullchain.pem"
     cp -L "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
+    [[ "$nginx_was_active" == 1 ]] && systemctl start nginx
   else
     [[ -s "$CERT_DIR/fullchain.pem" && -s "$CERT_DIR/privkey.pem" ]] || {
       echo "existing 模式需要 $CERT_DIR/fullchain.pem 和 privkey.pem" >&2
@@ -218,6 +242,37 @@ systemctl daemon-reload
 systemctl enable --now aobai-node-redis aobai-node-speedtestd
 systemctl restart aobai-node-sbox
 systemctl enable aobai-node-sbox
+
+if [[ "$needs_certificate" == 1 && "$CERT_MODE" == "letsencrypt" ]]; then
+  install -d -m 0755 \
+    /etc/letsencrypt/renewal-hooks/pre \
+    /etc/letsencrypt/renewal-hooks/deploy \
+    /etc/letsencrypt/renewal-hooks/post
+  cat >/etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx <<'EOF'
+#!/usr/bin/env bash
+systemctl stop nginx
+EOF
+  cat >/etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx <<'EOF'
+#!/usr/bin/env bash
+systemctl start nginx
+EOF
+  cat >"/etc/letsencrypt/renewal-hooks/deploy/aobai-node-$DOMAIN" <<EOF
+#!/usr/bin/env bash
+set -e
+cp -L "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$CERT_DIR/fullchain.pem"
+cp -L "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
+chown -R "$RUN_USER:$RUN_USER" "$CERT_DIR"
+chmod 0750 "$CERT_DIR"
+chmod 0640 "$CERT_DIR/fullchain.pem" "$CERT_DIR/privkey.pem"
+systemctl restart aobai-node-sbox
+EOF
+  chmod 0755 \
+    /etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx \
+    /etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx \
+    "/etc/letsencrypt/renewal-hooks/deploy/aobai-node-$DOMAIN"
+  systemctl enable --now certbot.timer 2>/dev/null || true
+fi
+
 sleep 8
 systemctl --no-pager --full status aobai-node-sbox | sed -n '1,12p'
 echo "部署完成: $INSTALL_ROOT"
