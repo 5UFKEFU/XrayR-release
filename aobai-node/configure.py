@@ -205,7 +205,6 @@ def write_nginx(root, domain, cdn):
 server {{
     listen 443 ssl;
     listen [::]:443 ssl;
-    http2 on;
     server_name {domain};
     ssl_certificate {root}/ssl/{domain}/fullchain.pem;
     ssl_certificate_key {root}/ssl/{domain}/privkey.pem;

@@ -117,6 +117,9 @@ if [[ "$needs_certificate" == 1 ]]; then
       exit 1
     }
   fi
+  chown -R "$RUN_USER:$RUN_USER" "$CERT_DIR"
+  chmod 0750 "$CERT_DIR"
+  chmod 0640 "$CERT_DIR/fullchain.pem" "$CERT_DIR/privkey.pem"
 fi
 
 python3 "$INSTALL_ROOT/tools/configure.py" \
