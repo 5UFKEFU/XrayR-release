@@ -281,8 +281,12 @@ def main():
     config = re.sub(r'  bind_ip: .*', '  bind_ip: "${PUBLIC_BIND_IP}"', config, count=1)
     config = re.sub(r'  inbound_ids: \[[^\n]*\]',
                     f"  inbound_ids: [{', '.join(map(str, inbound_ids))}]", config, count=1)
-    rows = ["compatible_sspanel:"]
+    panel_tags = {}
     for node_id, tag, _ in panel_rows:
+        panel_tags.setdefault(node_id, []).append(tag)
+
+    rows = ["compatible_sspanel:"]
+    for node_id, tags in panel_tags.items():
         rows.extend([
             f'  - url: "{args.panel_url}"',
             f'    mu_key: "{args.mu_key}"',
@@ -291,8 +295,8 @@ def main():
             "    traffic_report_sec: 60",
             "    user_pull_sec: 300",
             "    inbound_tags:",
-            f'      - "{tag}"',
         ])
+        rows.extend(f'      - "{tag}"' for tag in tags)
     config, count = re.subn(
         r"compatible_sspanel:\n.*?(?=\nonline_session:)",
         "\n".join(rows),
