@@ -1,4 +1,5 @@
 # XRayR
+
 A Xray backend framework that can easily support many panels.
 
 一个基于 Xray 的后端框架，支持 V2Ray、Trojan、Shadowsocks 协议，极易扩展，支持多面板对接。
@@ -50,7 +51,7 @@ PANEL_TYPE=NewV2board API_HOST=https://panel.example.com API_KEY=你的密钥 NO
 **前提：**
 
 - 已安装可执行文件 `/usr/local/XrayR/XrayR`
-- 已存在模板配置 **`/etc/XrayR/service2/config.yml`**（脚本固定以该路径为模板复制）
+- 已存在模板配置 `**/etc/XrayR/service2/config.yml`**（脚本固定以该路径为模板复制）
 
 **用法：**
 
@@ -59,7 +60,7 @@ bash add-xrayr-instance.sh [--start] <实例名> [更多实例名...]
 ```
 
 - 会为每个实例创建目录 `/etc/XrayR/<实例名>/`，并复制模板为 `config.yml`
-- 服务名为 **`XrayR@<实例名>.service`**；默认**不自动启动**，避免与模板端口、NodeID 等冲突；改好各实例配置后手工启动，或加上 `--start` 在创建后立刻 `enable --now`
+- 服务名为 `**XrayR@<实例名>.service**`；默认**不自动启动**，避免与模板端口、NodeID 等冲突；改好各实例配置后手工启动，或加上 `--start` 在创建后立刻 `enable --now`
 - 实例名只能包含字母、数字、`.`、`_`、`-`；名称 `service2` 会被跳过（模板实例）
 
 示例（先准备好 `service2` 模板配置，再新增 `service3`、`service4`）：
@@ -68,6 +69,13 @@ bash add-xrayr-instance.sh [--start] <实例名> [更多实例名...]
 bash add-xrayr-instance.sh service3 service4
 # 分别编辑 /etc/XrayR/service3/config.yml、/etc/XrayR/service4/config.yml 后：
 systemctl enable --now XrayR@service3 XrayR@service4
+systemctl status XrayR@service3
+systemctl restart XrayR@service3
+
+journalctl -u XrayR@service3 -f
+手工启动命令看错是什么原因？
+/usr/local/XrayR/XrayR --config /etc/XrayR/service3/config.yml 
+
 ```
 
 若模板单元 `/etc/systemd/system/XrayR@.service` 不存在，脚本会自动创建。
