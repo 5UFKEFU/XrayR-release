@@ -68,6 +68,7 @@ usage() {
   - 默认只创建实例目录和配置，不自动启动，避免复制模板后端口/NodeID 冲突
   - 为每个实例创建 /etc/XrayR/<实例名>/config.yml
   - systemd 服务名为 XrayR@<实例名>
+  - geoip.dat / geosite.dat：与模板单元一致，工作目录为 /usr/local/XrayR/，一般与该目录下的一份资源共用即可；若在实例目录相对路径查找资源，脚本会在实例目录下创建指向 /etc/XrayR 或 /usr/local/XrayR 的符号链接（不重复占用磁盘）
   - 如果实例目录或服务已存在，则自动跳过
   - 如果确认配置已修改完成，可加 --start 自动启用并启动服务
 USAGE
@@ -114,6 +115,26 @@ parse_args() {
   INSTANCE_NAMES=("${names[@]}")
 }
 
+link_geo_assets() {
+  local dest_dir="$1"
+  local f src=""
+  for f in geoip.dat geosite.dat; do
+    if [[ -e "${dest_dir}/${f}" ]]; then
+      continue
+    fi
+    if [[ -f "${INSTANCE_ROOT}/${f}" ]]; then
+      src="${INSTANCE_ROOT}/${f}"
+    elif [[ -f "/usr/local/XrayR/${f}" ]]; then
+      src="/usr/local/XrayR/${f}"
+    else
+      log "未找到 ${f}（通常随 XrayR 安装在 /usr/local/XrayR 或由 install.sh 复制到 /etc/XrayR）；使用路由/geo 规则前请补全"
+      continue
+    fi
+    ln -sfn "$src" "${dest_dir}/${f}"
+    log "已链接 ${f} -> ${src}"
+  done
+}
+
 create_instance() {
   local name="$1"
   local config_dir="$INSTANCE_ROOT/$name"
@@ -137,6 +158,7 @@ create_instance() {
 
   mkdir -p "$config_dir"
   cp "$BASE_CONFIG" "$config_file"
+  link_geo_assets "$config_dir"
   systemctl daemon-reload
 
   log "已基于模板 ${TEMPLATE_NAME} 创建实例 $name"

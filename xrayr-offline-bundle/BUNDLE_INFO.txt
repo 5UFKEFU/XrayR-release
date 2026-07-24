@@ -1,0 +1,10 @@
+XrayR offline bundle
+Repo: XrayR-project/XrayR
+Version: v0.9.4
+Created: 2026-05-13T15:49:13Z
+Architectures: 64
+
+On target (root), after uploading this directory, for example:
+  bash install_xrayr.sh --from-bundle /path/to/uploaded/dir --no-apt
+
+Or: BUNDLE_DIR=/path/to/uploaded/dir NO_APT=1 bash install_xrayr.sh
