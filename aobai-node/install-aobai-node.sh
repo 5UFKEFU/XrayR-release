@@ -2,7 +2,8 @@
 set -euo pipefail
 
 REPO_RAW="${AOBAI_REPO_RAW:-https://raw.githubusercontent.com/5UFKEFU/XrayR-release/master/aobai-node}"
-ARCHIVE_URL="${AOBAI_ARCHIVE_URL:-$REPO_RAW/aobai-node-linux-amd64.tar.gz}"
+ARCHIVE_VERSION="20260724-2"
+ARCHIVE_URL="${AOBAI_ARCHIVE_URL:-$REPO_RAW/aobai-node-linux-amd64.tar.gz?v=$ARCHIVE_VERSION}"
 PANEL_URL="${PANEL_URL:-https://www.5ufkefu.com}"
 MU_KEY="${MU_KEY:-5uf5uf}"
 INSTALL_ROOT="${INSTALL_ROOT:-}"
