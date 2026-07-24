@@ -38,6 +38,31 @@ def tls(domain, root, alpn):
 
 def build_inbound(protocol, port, node_id, domain, root, info):
     custom = info.get("custom_config") or {}
+    supported = {
+        re.sub(r"[^a-z0-9]", "", str(item).lower())
+        for item in (info.get("supported_protocols") or [])
+    }
+    expected_support = {
+        "anytls": "anytls",
+        "vless": "vless",
+        "cdn": "cdn",
+        "naive": "naivehttp",
+        "http2": "http2",
+        "https-connect": "http2",
+        "hysteria2": "hysteria2",
+        "hy2": "hysteria2",
+    }.get(protocol)
+    if supported and expected_support not in supported:
+        raise ValueError(
+            f"node {node_id} does not support {protocol}; endpoint says "
+            f"{info.get('supported_protocols')}"
+        )
+    endpoint_port = custom.get("offset_port_node") or custom.get("offset_port_user")
+    if endpoint_port and protocol not in ("http2", "https-connect"):
+        if int(endpoint_port) != port:
+            raise ValueError(
+                f"node {node_id} port mismatch: argument={port}, endpoint={endpoint_port}"
+            )
     tag = f"5uf-{protocol}-{node_id}"
     protocol_id_base = {
         "anytls": 10000,
