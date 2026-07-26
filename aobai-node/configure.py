@@ -8,6 +8,18 @@ import re
 import urllib.request
 
 
+TRANSITION_EGRESS = {
+    185: "sg",
+    186: "tw",
+    187: "vn",
+    188: "kr",
+    189: "th",
+    190: "au",
+    191: "in",
+    192: "de",
+}
+
+
 def split_csv(value):
     return [item.strip() for item in value.split(",") if item.strip()]
 
@@ -268,6 +280,7 @@ def main():
     panel_rows = []
     inbound_ids = []
     cdn = []
+    egress_inbounds = {}
     for protocol, port, node_id in zip(protocols, ports, node_ids):
         info = node_info(args.panel_url, node_id)
         actual, tag, inbound_id, inbound = build_inbound(
@@ -279,6 +292,27 @@ def main():
         inbounds.append({"data": inbound, "success": True})
         inbound_ids.append(inbound_id)
         panel_rows.append((node_id, tag, actual))
+        country = TRANSITION_EGRESS.get(node_id)
+        if country:
+            egress_inbounds.setdefault(country, []).append(tag)
+
+    outbounds = [{"tag": "direct", "type": "direct"},
+                 {"tag": "block", "type": "block"}]
+    routes = []
+    if egress_inbounds:
+        egress_path = pathlib.Path(args.root) / "etc/sbox/tier1-egress.json"
+        if not egress_path.is_file():
+            raise SystemExit(f"missing country egress map: {egress_path}")
+        egress_map = json.loads(egress_path.read_text())
+        for country, tags in egress_inbounds.items():
+            outbound = dict(egress_map[country])
+            outbound["tag"] = f"egress-{country}"
+            outbounds.append(outbound)
+            routes.append({
+                "action": "route",
+                "inbound": tags,
+                "outbound": outbound["tag"],
+            })
 
     bootstrap = {
         "experimental": {},
@@ -292,9 +326,9 @@ def main():
             "ssm": {"host": "127.0.0.1", "port": 28912},
         },
         "nginx_global": {"enabled": False},
-        "outbounds": [{"tag": "direct", "type": "direct"}, {"tag": "block", "type": "block"}],
+        "outbounds": outbounds,
         "route": {},
-        "routes": [],
+        "routes": routes,
     }
     root = pathlib.Path(args.root)
     bootstrap_path = root / "etc/sbox/static-bootstrap.json"
