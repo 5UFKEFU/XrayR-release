@@ -136,6 +136,12 @@ if [[ "$needs_certificate" == 1 ]]; then
     fi
 
     cert_args=(certonly --standalone --non-interactive --agree-tos -d "$DOMAIN")
+    renewal_config="/etc/letsencrypt/renewal/$DOMAIN.conf"
+    if [[ -f "$renewal_config" ]] &&
+       ! grep -Eq '^authenticator *= *standalone$' "$renewal_config"; then
+      echo "检测到证书验证方式发生变化，将重新签发一次以切换到 HTTP-01。"
+      cert_args+=(--force-renewal)
+    fi
     if [[ -n "$LE_EMAIL" ]]; then
       cert_args+=(--email "$LE_EMAIL")
     else
@@ -163,6 +169,12 @@ if [[ "$needs_certificate" == 1 ]]; then
       --dns-cloudflare-credentials "$CLOUDFLARE_CREDENTIALS"
       --dns-cloudflare-propagation-seconds 30
       --non-interactive --agree-tos -d "$DOMAIN")
+    renewal_config="/etc/letsencrypt/renewal/$DOMAIN.conf"
+    if [[ -f "$renewal_config" ]] &&
+       ! grep -Eq '^authenticator *= *dns-cloudflare$' "$renewal_config"; then
+      echo "检测到证书验证方式发生变化，将重新签发一次以切换到 Cloudflare DNS-01。"
+      cert_args+=(--force-renewal)
+    fi
     if [[ -n "$LE_EMAIL" ]]; then
       cert_args+=(--email "$LE_EMAIL")
     else
