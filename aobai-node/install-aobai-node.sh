@@ -354,6 +354,7 @@ if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl enable --now nginx
+  systemctl reload nginx
 else
   rm -f \
     "/etc/nginx/sites-enabled/aobai-$DOMAIN" \
