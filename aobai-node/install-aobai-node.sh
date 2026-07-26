@@ -160,6 +160,10 @@ if [[ "$needs_certificate" == 1 ]]; then
       echo "cloudflare 模式必须提供 --cloudflare-token" >&2
       exit 2
     }
+    # 从 HTTP-01 迁移时，先移除旧的停启 Nginx hook，确保 DNS-01 全程不停机。
+    rm -f \
+      /etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx \
+      /etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx
     install -d -m 0700 /etc/letsencrypt/credentials
     CLOUDFLARE_CREDENTIALS="/etc/letsencrypt/credentials/aobai-node-cloudflare.ini"
     printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_TOKEN" \
