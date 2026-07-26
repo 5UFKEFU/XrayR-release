@@ -408,7 +408,9 @@ if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
     "/etc/nginx/sites-enabled/aobai-$DOMAIN"
   # Debian/Ubuntu nginx includes sites-enabled. Official nginx.org packages
   # include only conf.d, so make the same vhost visible there when necessary.
-  if ! nginx -T 2>&1 | grep -Fq "/etc/nginx/sites-enabled/"; then
+  # Do not use grep -q here: with pipefail it closes the pipe early and nginx's
+  # SIGPIPE makes an included sites-enabled tree look absent.
+  if ! nginx -T 2>&1 | grep -F "/etc/nginx/sites-enabled/" >/dev/null; then
     ln -sfn "/etc/nginx/sites-available/aobai-$DOMAIN" \
       "/etc/nginx/conf.d/aobai-$DOMAIN.conf"
   fi
