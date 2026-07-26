@@ -408,6 +408,7 @@ fi
 
 systemctl daemon-reload
 systemctl enable --now aobai-node-redis aobai-node-speedtestd
+systemctl restart aobai-node-redis aobai-node-speedtestd
 systemctl restart aobai-node-sbox
 systemctl enable aobai-node-sbox
 
