@@ -151,9 +151,8 @@ tar -xzf "$tmp_dir/release.tar.gz" -C "$INSTALL_ROOT"
 # archive. This lets installer fixes ship without rebuilding all binaries.
 curl -fL --retry 3 --connect-timeout 20 \
   "$REPO_RAW/configure.py" -o "$INSTALL_ROOT/tools/configure.py"
-repo_root_raw="${REPO_RAW%/aobai-node}"
 curl -fL --retry 3 --connect-timeout 20 \
-  "$repo_root_raw/etc/sbox/multi-country/tier1-egress.json" \
+  "${AOBAI_EGRESS_URL:-https://raw.githubusercontent.com/5UFKEFU/aobai-abserver/5uf_multi/etc/sbox/multi-country/tier1-egress.json}" \
   -o "$INSTALL_ROOT/etc/sbox/tier1-egress.json"
 chown -R "$RUN_USER:$RUN_USER" "$INSTALL_ROOT"
 
