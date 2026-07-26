@@ -31,11 +31,35 @@ MU_KEY='实际值' PANEL_URL='https://www.5ufkefu.com' \
 
 CDN 使用系统 Nginx；HTTP2 使用随发布包提供的 HAProxy。
 
+## Cloudflare DNS 证书
+
+域名尚未创建 A 记录，或者服务器无法开放 80 端口时，使用 Cloudflare
+DNS-01 模式：
+
+```bash
+bash install-aobai-node.sh uk4.xinhuanet.network \
+  anytls,vless,cdn,naive,http2,hysteria2 \
+  38553,38573,443,38574,55584,38590 \
+  199,201,202,203,199,200 \
+  --cert-mode cloudflare \
+  --cloudflare-token 'Cloudflare_API_Token' \
+  --email admin@example.com
+```
+
+Token 只需授予目标 Zone 的 `DNS:Edit` 权限。脚本会将 Token 写入
+`/etc/letsencrypt/credentials/aobai-node-cloudflare.ini`，权限设为 `600`。
+由于 Token 直接出现在命令行中，部署后应清理对应的 shell history。
+
+脚本会安装 `/etc/cron.d/aobai-node-cert-renew`，每周一 03:17 执行
+`certbot renew`。Certbot 每周检查证书，但只在证书进入续签窗口时续签；
+成功后会同步项目证书并重启 sbox。Cloudflare 模式不需要停止 Nginx。
+
 ## 部署前提
 
 - Ubuntu/Debian x86_64。
-- 域名 A 记录已经指向新服务器公网 IP。
-- 80/443 和业务端口已在防火墙、安全组中放行。
+- HTTP-01 模式要求域名 A 记录指向服务器，并放行 80 端口。
+- Cloudflare DNS-01 模式申请证书时不要求 A 记录或开放 80 端口。
+- 服务投入使用前仍需为域名配置正确的 A 记录并放行业务端口。
 - 当前用户可以使用 sudo。
 
 发布包不包含证书、Cloudflare Token、面板私钥或任何服务器运行数据。

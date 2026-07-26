@@ -9,6 +9,7 @@ MU_KEY="${MU_KEY:-5uf5uf}"
 INSTALL_ROOT="${INSTALL_ROOT:-}"
 CERT_MODE="${CERT_MODE:-letsencrypt}"
 LE_EMAIL="${LE_EMAIL:-}"
+CLOUDFLARE_TOKEN="${CLOUDFLARE_TOKEN:-}"
 PREPARE_ONLY=0
 
 usage() {
@@ -31,9 +32,17 @@ usage() {
   --panel-url URL       面板地址，默认 https://www.5ufkefu.com
   --mu-key KEY          SSPanel mu_key，默认读取 MU_KEY，未设置时为 5uf5uf
   --install-root DIR    安装目录，默认 /home/<sudo调用者>/aobai-node
-  --cert-mode MODE      letsencrypt 或 existing
+  --cert-mode MODE      letsencrypt、cloudflare 或 existing
+  --cloudflare-token T  Cloudflare API Token（会写入 root-only 凭证文件）
   --email EMAIL         Let's Encrypt 邮箱
   --prepare-only        只下载、解压和校验，不生成配置、不启动
+
+Cloudflare DNS-01 示例（域名无需预先解析，80端口无需开放）:
+  bash install-aobai-node.sh ... \
+    --cert-mode cloudflare \
+    --cloudflare-token 'Cloudflare_API_Token'
+
+注意：直接传 Token 可能保存在 shell history；建议部署后清理对应历史记录。
 EOF
 }
 
@@ -45,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --mu-key) MU_KEY="${2:?}"; shift 2 ;;
     --install-root) INSTALL_ROOT="${2:?}"; shift 2 ;;
     --cert-mode) CERT_MODE="${2:?}"; shift 2 ;;
+    --cloudflare-token) CLOUDFLARE_TOKEN="${2:?}"; shift 2 ;;
     --email) LE_EMAIL="${2:?}"; shift 2 ;;
     --prepare-only) PREPARE_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -53,11 +63,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "${EUID}" -ne 0 ]]; then
-  exec sudo -E bash "$0" "$DOMAIN" "$PROTOCOLS" "$PORTS" "$NODE_IDS" \
-    --panel-url "$PANEL_URL" --mu-key "$MU_KEY" \
-    ${INSTALL_ROOT:+--install-root "$INSTALL_ROOT"} \
-    --cert-mode "$CERT_MODE" ${LE_EMAIL:+--email "$LE_EMAIL"} \
-    $([[ "$PREPARE_ONLY" == 1 ]] && echo --prepare-only)
+  sudo_args=("$DOMAIN" "$PROTOCOLS" "$PORTS" "$NODE_IDS"
+    --panel-url "$PANEL_URL" --mu-key "$MU_KEY" --cert-mode "$CERT_MODE")
+  [[ -n "$INSTALL_ROOT" ]] && sudo_args+=(--install-root "$INSTALL_ROOT")
+  [[ -n "$LE_EMAIL" ]] && sudo_args+=(--email "$LE_EMAIL")
+  [[ -n "$CLOUDFLARE_TOKEN" ]] && sudo_args+=(--cloudflare-token "$CLOUDFLARE_TOKEN")
+  [[ "$PREPARE_ONLY" == 1 ]] && sudo_args+=(--prepare-only)
+  exec sudo -E bash "$0" "${sudo_args[@]}"
 fi
 
 RUN_USER="${SUDO_USER:-jeff}"
@@ -67,7 +79,8 @@ INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
 
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-  ca-certificates curl jq nginx certbot openssl python3 liblua5.4-0 >/dev/null
+  ca-certificates curl jq nginx certbot python3-certbot-dns-cloudflare \
+  cron openssl python3 liblua5.4-0 >/dev/null
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -136,11 +149,36 @@ if [[ "$needs_certificate" == 1 ]]; then
     cp -L "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$CERT_DIR/fullchain.pem"
     cp -L "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
     [[ "$nginx_was_active" == 1 ]] && systemctl start nginx
-  else
+  elif [[ "$CERT_MODE" == "cloudflare" ]]; then
+    [[ -n "$CLOUDFLARE_TOKEN" ]] || {
+      echo "cloudflare 模式必须提供 --cloudflare-token" >&2
+      exit 2
+    }
+    install -d -m 0700 /etc/letsencrypt/credentials
+    CLOUDFLARE_CREDENTIALS="/etc/letsencrypt/credentials/aobai-node-cloudflare.ini"
+    printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_TOKEN" \
+      >"$CLOUDFLARE_CREDENTIALS"
+    chmod 0600 "$CLOUDFLARE_CREDENTIALS"
+    cert_args=(certonly --dns-cloudflare
+      --dns-cloudflare-credentials "$CLOUDFLARE_CREDENTIALS"
+      --dns-cloudflare-propagation-seconds 30
+      --non-interactive --agree-tos -d "$DOMAIN")
+    if [[ -n "$LE_EMAIL" ]]; then
+      cert_args+=(--email "$LE_EMAIL")
+    else
+      cert_args+=(--register-unsafely-without-email)
+    fi
+    certbot "${cert_args[@]}"
+    cp -L "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$CERT_DIR/fullchain.pem"
+    cp -L "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
+  elif [[ "$CERT_MODE" == "existing" ]]; then
     [[ -s "$CERT_DIR/fullchain.pem" && -s "$CERT_DIR/privkey.pem" ]] || {
       echo "existing 模式需要 $CERT_DIR/fullchain.pem 和 privkey.pem" >&2
       exit 1
     }
+  else
+    echo "未知 cert-mode: $CERT_MODE（支持 letsencrypt、cloudflare、existing）" >&2
+    exit 2
   fi
   chown -R "$RUN_USER:$RUN_USER" "$CERT_DIR"
   chmod 0750 "$CERT_DIR"
@@ -243,19 +281,28 @@ systemctl enable --now aobai-node-redis aobai-node-speedtestd
 systemctl restart aobai-node-sbox
 systemctl enable aobai-node-sbox
 
-if [[ "$needs_certificate" == 1 && "$CERT_MODE" == "letsencrypt" ]]; then
+if [[ "$needs_certificate" == 1 && "$CERT_MODE" != "existing" ]]; then
   install -d -m 0755 \
     /etc/letsencrypt/renewal-hooks/pre \
     /etc/letsencrypt/renewal-hooks/deploy \
     /etc/letsencrypt/renewal-hooks/post
-  cat >/etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx <<'EOF'
+  if [[ "$CERT_MODE" == "letsencrypt" ]]; then
+    cat >/etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx <<'EOF'
 #!/usr/bin/env bash
 systemctl stop nginx
 EOF
-  cat >/etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx <<'EOF'
+    cat >/etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx <<'EOF'
 #!/usr/bin/env bash
 systemctl start nginx
 EOF
+    chmod 0755 \
+      /etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx \
+      /etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx
+  else
+    rm -f \
+      /etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx \
+      /etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx
+  fi
   cat >"/etc/letsencrypt/renewal-hooks/deploy/aobai-node-$DOMAIN" <<EOF
 #!/usr/bin/env bash
 set -e
@@ -264,13 +311,18 @@ cp -L "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$CERT_DIR/privkey.pem"
 chown -R "$RUN_USER:$RUN_USER" "$CERT_DIR"
 chmod 0750 "$CERT_DIR"
 chmod 0640 "$CERT_DIR/fullchain.pem" "$CERT_DIR/privkey.pem"
+systemctl is-active --quiet nginx && systemctl reload nginx
 systemctl restart aobai-node-sbox
 EOF
-  chmod 0755 \
-    /etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx \
-    /etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx \
-    "/etc/letsencrypt/renewal-hooks/deploy/aobai-node-$DOMAIN"
-  systemctl enable --now certbot.timer 2>/dev/null || true
+  chmod 0755 "/etc/letsencrypt/renewal-hooks/deploy/aobai-node-$DOMAIN"
+
+  cat >/etc/cron.d/aobai-node-cert-renew <<'EOF'
+# 每周一 03:17 检查证书；Certbot 仅在进入续签窗口时执行续签。
+17 3 * * 1 root certbot renew --quiet --no-random-sleep-on-renew
+EOF
+  chmod 0644 /etc/cron.d/aobai-node-cert-renew
+  systemctl enable --now cron
+  systemctl disable --now certbot.timer 2>/dev/null || true
 fi
 
 sleep 8
