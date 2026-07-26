@@ -152,6 +152,9 @@ tar -xzf "$tmp_dir/release.tar.gz" -C "$INSTALL_ROOT"
 curl -fL --retry 3 --connect-timeout 20 \
   "$REPO_RAW/configure.py" -o "$INSTALL_ROOT/tools/configure.py"
 curl -fL --retry 3 --connect-timeout 20 \
+  "$REPO_RAW/report_online_real.sh" \
+  -o "$INSTALL_ROOT/tools/report_online_real.sh"
+curl -fL --retry 3 --connect-timeout 20 \
   "${AOBAI_EGRESS_URL:-$REPO_RAW/tier1-egress.json}" \
   -o "$INSTALL_ROOT/etc/sbox/tier1-egress.json"
 chown -R "$RUN_USER:$RUN_USER" "$INSTALL_ROOT"
@@ -554,8 +557,8 @@ fi
   exit 1
 }
 chmod 0755 "$INSTALL_ROOT/tools/report_online_real.sh"
-chown "$RUN_USER:$RUN_USER" "$INSTALL_ROOT/tools/report_online_real.sh"
-online_cron="* * * * * SERVER_NAME=$DOMAIN $INSTALL_ROOT/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report"
+chown root:root "$INSTALL_ROOT/tools/report_online_real.sh"
+online_cron="* * * * * sudo -n $INSTALL_ROOT/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report"
 {
   crontab -u "$RUN_USER" -l 2>/dev/null |
     grep -Ev 'aobai-online-report|report_online_real\.sh' || true
@@ -564,8 +567,8 @@ online_cron="* * * * * SERVER_NAME=$DOMAIN $INSTALL_ROOT/tools/report_online_rea
 
 # 旧部署可能从 root 调用旧版统计脚本；迁移后只保留运行用户这一份。
 root_cron="$(crontab -u root -l 2>/dev/null || true)"
-if grep -q 'report_online_real\.sh' <<<"$root_cron"; then
-  grep -v 'report_online_real\.sh' <<<"$root_cron" | crontab -u root -
+if grep -Eq 'report_online_real\.sh|report_xray_online\.py' <<<"$root_cron"; then
+  grep -Ev 'report_online_real\.sh|report_xray_online\.py' <<<"$root_cron" | crontab -u root -
 fi
 
 sleep 8
