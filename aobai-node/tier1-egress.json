@@ -1,4 +1,41 @@
 {
+  "usa": {
+    "type": "vless",
+    "server": "usa1.xinhuanet.network",
+    "server_port": 4433,
+    "uuid": "3fed2605-a7ce-46c1-b043-39b9062590d2",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.cloudflare.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "LvC4fp-hUZKTUT-xttBUgLKwcKLxanZB3THITBQ5Qyw",
+        "short_id": ["bad804a0291f4eb6"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "jp": {
+    "type": "vless",
+    "server": "139.162.74.90",
+    "server_port": 4433,
+    "uuid": "11980e8c-f89e-4ce9-be43-f9acb9b9d944",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.cloudflare.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "-_v2cXOI0VtMHXwEfXVjdLldYjF7B_UAtzK_Ude3H1M",
+        "short_id": ["02412087e064ca79"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "hk": {
+    "type": "direct"
+  },
   "sg": {
     "type": "vless",
     "server": "sg1.xinhuanet.network",
