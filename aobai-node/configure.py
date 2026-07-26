@@ -226,9 +226,17 @@ server {{
         default_type text/plain;
         return 200 "$remote_addr\n";
     }}
-    location / {{
+    location ^~ /speedtest/api/ {{
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_request_buffering off;
         proxy_pass http://127.0.0.1:18771;
+    }}
+    location / {{
+        root {root}/opt/www/vhost/speedtest;
+        try_files $uri $uri/ /index.html;
     }}
 }}
 """)
