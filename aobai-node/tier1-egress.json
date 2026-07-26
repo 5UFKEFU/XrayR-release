@@ -1,4 +1,21 @@
 {
+  "uk": {
+    "type": "vless",
+    "server": "uk1.xinhuanet.network",
+    "server_port": 4433,
+    "uuid": "481c2558-b091-4257-b7c6-8c00a1bb4bec",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.cloudflare.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "58BMmJ_EyLnqM3Kg1Ii3C5ATacxeRsrrzK0P_k8eR3U",
+        "short_id": ["556c6737a72f9180"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
   "usa": {
     "type": "vless",
     "server": "usa1.xinhuanet.network",

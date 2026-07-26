@@ -11,6 +11,7 @@ import urllib.request
 TRANSITION_EGRESS = {
     17: "hk",
     21: "jp",
+    139: "uk",
     153: "usa",
     185: "sg",
     186: "tw",
