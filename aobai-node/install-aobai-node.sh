@@ -152,7 +152,7 @@ tar -xzf "$tmp_dir/release.tar.gz" -C "$INSTALL_ROOT"
 curl -fL --retry 3 --connect-timeout 20 \
   "$REPO_RAW/configure.py" -o "$INSTALL_ROOT/tools/configure.py"
 curl -fL --retry 3 --connect-timeout 20 \
-  "${AOBAI_EGRESS_URL:-https://raw.githubusercontent.com/5UFKEFU/aobai-abserver/5uf_multi/etc/sbox/multi-country/tier1-egress.json}" \
+  "${AOBAI_EGRESS_URL:-$REPO_RAW/tier1-egress.json}" \
   -o "$INSTALL_ROOT/etc/sbox/tier1-egress.json"
 chown -R "$RUN_USER:$RUN_USER" "$INSTALL_ROOT"
 

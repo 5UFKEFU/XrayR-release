@@ -1,0 +1,138 @@
+{
+  "sg": {
+    "type": "vless",
+    "server": "sg1.xinhuanet.network",
+    "server_port": 10443,
+    "uuid": "735c7973-2359-48fd-8625-aba8dc5fbaea",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.cloudflare.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "gf8eutKOBMdd79wcKFY0ESS91gCuifFLLeEt3pJn6jI",
+        "short_id": ["d121db87c2513c30"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "tw": {
+    "type": "vless",
+    "server": "tw1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "vn": {
+    "type": "vless",
+    "server": "vn1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "kr": {
+    "type": "vless",
+    "server": "kr1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "th": {
+    "type": "vless",
+    "server": "th1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "au": {
+    "type": "vless",
+    "server": "au1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "in": {
+    "type": "vless",
+    "server": "in1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  },
+  "de": {
+    "type": "vless",
+    "server": "de1.xinhuanet.network",
+    "server_port": 3389,
+    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "flow": "xtls-rprx-vision",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com",
+      "reality": {
+        "enabled": true,
+        "public_key": "dA2t2td9r8lguXOw3P1p6n-45OCeIEmw5aYpeocUYV4",
+        "short_id": ["0123456789abcdef"]
+      },
+      "utls": {"enabled": true, "fingerprint": "chrome"}
+    }
+  }
+}
