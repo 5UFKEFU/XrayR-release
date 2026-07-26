@@ -340,6 +340,7 @@ EOF
 set -euo pipefail
 credentials=/run/aobai-node-cloudflare.ini
 cloudflare_token="${1:-}"
+[[ $# -gt 0 ]] && shift
 cleanup() {
   rm -f "$credentials"
 }
@@ -348,9 +349,9 @@ if [[ -n "$cloudflare_token" ]]; then
   umask 077
   printf 'dns_cloudflare_api_token = %s\n' "$cloudflare_token" >"$credentials"
   certbot renew --quiet --no-random-sleep-on-renew \
-    --dns-cloudflare-credentials "$credentials"
+    --dns-cloudflare-credentials "$credentials" "$@"
 else
-  certbot renew --quiet --no-random-sleep-on-renew
+  certbot renew --quiet --no-random-sleep-on-renew "$@"
 fi
 EOF
   chmod 0755 /usr/local/sbin/aobai-cert-renew
