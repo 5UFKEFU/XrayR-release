@@ -55,6 +55,16 @@ Token 会同时出现在 shell history 和用户 crontab 中。
 时真正续签；成功后会同步项目证书、无中断 reload Nginx，并重启 sbox。
 Cloudflare DNS 验证期间不需要停止或重启 Nginx。
 
+## 在线人数上报
+
+安装器会把 `tools/report_online_real.sh` 部署给节点运行用户，并在该用户的
+`crontab -l` 中加入每分钟任务。脚本读取本机
+`http://127.0.0.1:28910/monitor/status`，按在线的唯一 `UserID` 统计人数，
+同一用户同时使用多个协议只计算一次，然后提交到原供应商在线人数接口。
+
+迁移旧服务器时，安装器会删除 root crontab 中调用旧
+`report_online_real.sh` 的任务，避免新旧口径重复上报。
+
 ## 部署前提
 
 - Ubuntu/Debian x86_64。
