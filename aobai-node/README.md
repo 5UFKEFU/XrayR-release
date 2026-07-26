@@ -30,6 +30,8 @@ MU_KEY='实际值' PANEL_URL='https://www.5ufkefu.com' \
 ```
 
 CDN 使用系统 Nginx；HTTP2 使用随发布包提供的 HAProxy。
+部署时会按服务器公网 IP 自动获取测速节点的城市、国家、经纬度和时区，
+写入 `speedtestd` 的 systemd 环境，避免所有节点回退为发布包内置的香港位置。
 
 移除已有部署中的单个协议或端口：
 

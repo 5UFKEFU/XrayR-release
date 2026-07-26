@@ -163,6 +163,33 @@ fi
 
 PUBLIC_IP="$(curl -4 -fsS --max-time 10 https://api.ipify.org)"
 MONITOR_IP="$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+SERVER_CITY="Server"
+SERVER_COUNTRY="Unknown"
+SERVER_COUNTRY_CODE=""
+SERVER_LATITUDE="0"
+SERVER_LONGITUDE="0"
+SERVER_TIMEZONE="UTC"
+geo_json="$(curl -4 -fsS --retry 2 --max-time 15 "https://ipwho.is/$PUBLIC_IP" || true)"
+if jq -e '.success == true' >/dev/null 2>&1 <<<"$geo_json"; then
+  SERVER_CITY="$(jq -r '.city // "Server"' <<<"$geo_json")"
+  SERVER_COUNTRY="$(jq -r '.country // "Unknown"' <<<"$geo_json")"
+  SERVER_COUNTRY_CODE="$(jq -r '.country_code // ""' <<<"$geo_json")"
+  SERVER_LATITUDE="$(jq -r '.latitude // 0' <<<"$geo_json")"
+  SERVER_LONGITUDE="$(jq -r '.longitude // 0' <<<"$geo_json")"
+  SERVER_TIMEZONE="$(jq -r '.timezone.id // "UTC"' <<<"$geo_json")"
+else
+  echo "警告：无法查询公网 IP 地理位置，测速页将显示通用服务端位置。" >&2
+fi
+case "$SERVER_COUNTRY_CODE" in
+  SG) SERVER_CITY_ZH="新加坡"; SERVER_COUNTRY_ZH="新加坡" ;;
+  HK) SERVER_CITY_ZH="香港"; SERVER_COUNTRY_ZH="香港" ;;
+  FR) SERVER_CITY_ZH="$SERVER_CITY"; SERVER_COUNTRY_ZH="法国" ;;
+  GB) SERVER_CITY_ZH="$SERVER_CITY"; SERVER_COUNTRY_ZH="英国" ;;
+  DE) SERVER_CITY_ZH="$SERVER_CITY"; SERVER_COUNTRY_ZH="德国" ;;
+  JP) SERVER_CITY_ZH="$SERVER_CITY"; SERVER_COUNTRY_ZH="日本" ;;
+  US) SERVER_CITY_ZH="$SERVER_CITY"; SERVER_COUNTRY_ZH="美国" ;;
+  *) SERVER_CITY_ZH="$SERVER_CITY"; SERVER_COUNTRY_ZH="$SERVER_COUNTRY" ;;
+esac
 CERT_DIR="$INSTALL_ROOT/ssl/$DOMAIN"
 mkdir -p "$CERT_DIR"
 
@@ -318,6 +345,17 @@ After=network-online.target
 [Service]
 User=$RUN_USER
 Environment=SPEEDTESTD_ADDR=127.0.0.1:18771
+Environment="SPEEDTESTD_SERVER_CITY=$SERVER_CITY"
+Environment="SPEEDTESTD_SERVER_CITY_EN=$SERVER_CITY"
+Environment="SPEEDTESTD_SERVER_CITY_ZH=$SERVER_CITY_ZH"
+Environment="SPEEDTESTD_SERVER_COUNTRY=$SERVER_COUNTRY"
+Environment="SPEEDTESTD_SERVER_COUNTRY_EN=$SERVER_COUNTRY"
+Environment="SPEEDTESTD_SERVER_COUNTRY_ZH=$SERVER_COUNTRY_ZH"
+Environment="SPEEDTESTD_SERVER_COUNTRY_CODE=$SERVER_COUNTRY_CODE"
+Environment="SPEEDTESTD_SERVER_LATITUDE=$SERVER_LATITUDE"
+Environment="SPEEDTESTD_SERVER_LONGITUDE=$SERVER_LONGITUDE"
+Environment="SPEEDTESTD_SERVER_TIMEZONE=$SERVER_TIMEZONE"
+Environment="SPEEDTESTD_SERVER_HOST=$DOMAIN"
 WorkingDirectory=$INSTALL_ROOT
 ExecStart=$INSTALL_ROOT/bin/speedtestd
 Restart=on-failure
