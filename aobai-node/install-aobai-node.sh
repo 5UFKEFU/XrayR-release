@@ -373,6 +373,25 @@ EOF
   systemctl disable --now certbot.timer 2>/dev/null || true
 fi
 
+[[ -f "$INSTALL_ROOT/tools/report_online_real.sh" ]] || {
+  echo "发布包缺少 tools/report_online_real.sh" >&2
+  exit 1
+}
+chmod 0755 "$INSTALL_ROOT/tools/report_online_real.sh"
+chown "$RUN_USER:$RUN_USER" "$INSTALL_ROOT/tools/report_online_real.sh"
+online_cron="* * * * * SERVER_NAME=$DOMAIN $INSTALL_ROOT/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report"
+{
+  crontab -u "$RUN_USER" -l 2>/dev/null |
+    grep -Ev 'aobai-online-report|report_online_real\.sh' || true
+  echo "$online_cron"
+} | crontab -u "$RUN_USER" -
+
+# 旧部署可能从 root 调用旧版统计脚本；迁移后只保留运行用户这一份。
+root_cron="$(crontab -u root -l 2>/dev/null || true)"
+if grep -q 'report_online_real\.sh' <<<"$root_cron"; then
+  grep -v 'report_online_real\.sh' <<<"$root_cron" | crontab -u root -
+fi
+
 sleep 8
 systemctl --no-pager --full status aobai-node-sbox | sed -n '1,12p'
 echo "部署完成: $INSTALL_ROOT"
