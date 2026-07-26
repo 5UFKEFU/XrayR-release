@@ -147,6 +147,10 @@ trap 'rm -rf "$tmp_dir"; rm -f /run/aobai-node-cloudflare.ini' EXIT
 curl -fL --retry 3 --connect-timeout 20 "$ARCHIVE_URL" -o "$tmp_dir/release.tar.gz"
 mkdir -p "$INSTALL_ROOT"
 tar -xzf "$tmp_dir/release.tar.gz" -C "$INSTALL_ROOT"
+# Keep deployment logic independently updatable from the large pinned binary
+# archive. This lets installer fixes ship without rebuilding all binaries.
+curl -fL --retry 3 --connect-timeout 20 \
+  "$REPO_RAW/configure.py" -o "$INSTALL_ROOT/tools/configure.py"
 chown -R "$RUN_USER:$RUN_USER" "$INSTALL_ROOT"
 
 for binary in sbox-server-embedded redis-server-embedded redis-cli-embedded speedtestd haproxy; do
