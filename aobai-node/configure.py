@@ -235,7 +235,7 @@ server {{
         proxy_pass http://127.0.0.1:18771;
     }}
     location / {{
-        root {root}/opt/www/vhost/speedtest;
+        root /var/www/aobai-speedtest-{domain};
         try_files $uri $uri/ /index.html;
     }}
 }}

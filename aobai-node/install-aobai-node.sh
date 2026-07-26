@@ -346,6 +346,11 @@ WantedBy=multi-user.target
 EOF
 
 if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
+  speedtest_web_root="/var/www/aobai-speedtest-$DOMAIN"
+  install -d -m 0755 "$speedtest_web_root"
+  cp -a "$INSTALL_ROOT/opt/www/vhost/speedtest/." "$speedtest_web_root/"
+  chown -R root:root "$speedtest_web_root"
+  chmod -R a+rX "$speedtest_web_root"
   mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
   install -m 0644 "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" \
     "/etc/nginx/sites-available/aobai-$DOMAIN"
