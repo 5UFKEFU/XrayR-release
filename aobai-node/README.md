@@ -31,6 +31,16 @@ MU_KEY='实际值' PANEL_URL='https://www.5ufkefu.com' \
 
 CDN 使用系统 Nginx；HTTP2 使用随发布包提供的 HAProxy。
 
+移除已有部署中的单个协议或端口：
+
+```bash
+sudo bash install-aobai-node.sh sg1.xinhuanet.network --remove-service anytls
+sudo bash install-aobai-node.sh sg1.xinhuanet.network --remove-service 443
+```
+
+移除操作会读取 `etc/deployment.json`，重新生成其余服务的完整配置并清理
+不再使用的 Nginx 前端。至少需要保留一个服务。
+
 ## Cloudflare DNS 证书
 
 域名尚未创建 A 记录，或者服务器无法开放 80 端口时，使用 Cloudflare

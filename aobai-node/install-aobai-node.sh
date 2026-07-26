@@ -29,6 +29,9 @@ usage() {
 协议: anytls, vless, cdn, naive, http2, hysteria2
 
 选项:
+  --remove-service P    从已有部署移除一个协议或端口，例如：
+                        bash install-aobai-node.sh sg1.example.com --remove-service anytls
+                        bash install-aobai-node.sh sg1.example.com --remove-service 443
   --panel-url URL       面板地址，默认 https://www.5ufkefu.com
   --mu-key KEY          SSPanel mu_key，默认读取 MU_KEY，未设置时为 5uf5uf
   --install-root DIR    安装目录，默认 /home/<sudo调用者>/aobai-node
@@ -45,6 +48,63 @@ Cloudflare DNS-01 示例（域名无需预先解析，80端口无需开放）:
 注意：直接传 Token 可能保存在 shell history；建议部署后清理对应历史记录。
 EOF
 }
+
+if [[ $# -ge 3 && "$2" == "--remove-service" ]]; then
+  DOMAIN="$1"
+  REMOVE_SERVICE="$3"
+  shift 3
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install-root) INSTALL_ROOT="${2:?}"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "移除模式不支持参数: $1" >&2; exit 2 ;;
+    esac
+  done
+  if [[ "${EUID}" -ne 0 ]]; then
+    remove_args=("$DOMAIN" --remove-service "$REMOVE_SERVICE")
+    [[ -n "$INSTALL_ROOT" ]] && remove_args+=(--install-root "$INSTALL_ROOT")
+    exec sudo -E env AOBAI_RUN_USER="${USER}" bash "$0" "${remove_args[@]}"
+  fi
+  RUN_USER="${SUDO_USER:-${AOBAI_RUN_USER:-jeff}}"
+  [[ "$RUN_USER" != root ]] || RUN_USER="${AOBAI_RUN_USER:-jeff}"
+  RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
+  INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
+  state_file="$INSTALL_ROOT/etc/deployment.json"
+  [[ -s "$state_file" ]] || {
+    echo "找不到部署状态 $state_file；请先用新版安装脚本完整部署一次。" >&2
+    exit 1
+  }
+  mapfile -t kept_rows < <(
+    jq -r --arg target "${REMOVE_SERVICE,,}" '
+      [range(0; (.protocols | length)) as $i |
+       {protocol: .protocols[$i], port: .ports[$i], node_id: .node_ids[$i]} |
+       select((.protocol | ascii_downcase) != $target and (.port | tostring) != $target)] |
+      .[] | [.protocol, (.port | tostring), (.node_id | tostring)] | @tsv
+    ' "$state_file"
+  )
+  [[ "${#kept_rows[@]}" -gt 0 ]] || {
+    echo "不能移除最后一个服务；如需卸载整套节点请使用专用卸载流程。" >&2
+    exit 1
+  }
+  before_count="$(jq '.protocols | length' "$state_file")"
+  [[ "${#kept_rows[@]}" -lt "$before_count" ]] || {
+    echo "当前部署中找不到协议或端口: $REMOVE_SERVICE" >&2
+    exit 1
+  }
+  protocols=""; ports=""; node_ids=""
+  for row in "${kept_rows[@]}"; do
+    IFS=$'\t' read -r protocol port node_id <<<"$row"
+    protocols+="${protocols:+,}$protocol"
+    ports+="${ports:+,}$port"
+    node_ids+="${node_ids:+,}$node_id"
+  done
+  panel_url="$(jq -r '.panel_url' "$state_file")"
+  mu_key="$(jq -r '.mu_key' "$state_file")"
+  echo "移除 $REMOVE_SERVICE；保留: $protocols / $ports / $node_ids"
+  exec bash "$0" "$DOMAIN" "$protocols" "$ports" "$node_ids" \
+    --panel-url "$panel_url" --mu-key "$mu_key" \
+    --install-root "$INSTALL_ROOT" --cert-mode existing
+fi
 
 [[ $# -ge 4 ]] || { usage; exit 2; }
 DOMAIN="$1"; PROTOCOLS="$2"; PORTS="$3"; NODE_IDS="$4"; shift 4
@@ -286,6 +346,7 @@ WantedBy=multi-user.target
 EOF
 
 if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
+  mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
   install -m 0644 "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" \
     "/etc/nginx/sites-available/aobai-$DOMAIN"
   ln -sfn "/etc/nginx/sites-available/aobai-$DOMAIN" \
@@ -293,6 +354,12 @@ if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl enable --now nginx
+else
+  rm -f \
+    "/etc/nginx/sites-enabled/aobai-$DOMAIN" \
+    "/etc/nginx/sites-available/aobai-$DOMAIN"
+  nginx -t
+  systemctl is-active --quiet nginx && systemctl reload nginx
 fi
 
 systemctl daemon-reload

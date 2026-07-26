@@ -218,6 +218,14 @@ server {{
     ssl_certificate_key {root}/ssl/{domain}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 {''.join(blocks)}
+    location = /client/php.php {{
+        default_type text/plain;
+        return 200 "$remote_addr\n";
+    }}
+    location = /client/ip.php {{
+        default_type text/plain;
+        return 200 "$remote_addr\n";
+    }}
     location / {{
         proxy_set_header Host $host;
         proxy_pass http://127.0.0.1:18771;
@@ -323,6 +331,19 @@ def main():
     )
     (root / "etc/sbox/config.yaml").write_text(config)
     write_nginx(args.root, args.domain, cdn)
+    state = {
+        "domain": args.domain,
+        "protocols": protocols,
+        "ports": ports,
+        "node_ids": node_ids,
+        "panel_url": args.panel_url,
+        "mu_key": args.mu_key,
+        "bind_ip": args.bind_ip,
+        "monitor_ip": args.monitor_ip,
+    }
+    state_path = root / "etc/deployment.json"
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n")
+    state_path.chmod(0o600)
     print(json.dumps({
         "domain": args.domain,
         "protocols": protocols,
