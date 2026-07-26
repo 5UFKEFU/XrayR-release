@@ -203,6 +203,13 @@ mkdir -p "$CERT_DIR"
 
 needs_certificate=0
 IFS=',' read -ra protocol_list <<<"$PROTOCOLS"
+IFS=',' read -ra port_list <<<"$PORTS"
+http2_uses_port80=0
+for i in "${!protocol_list[@]}"; do
+  case "${protocol_list[$i],,}:${port_list[$i]:-}" in
+    http2:80|https-connect:80) http2_uses_port80=1 ;;
+  esac
+done
 for protocol in "${protocol_list[@]}"; do
   case "${protocol,,}" in
     anytls|cdn|naive|http2|https-connect|hysteria2|hy2) needs_certificate=1 ;;
@@ -396,6 +403,33 @@ WantedBy=multi-user.target
 EOF
 
 if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
+  if [[ "$http2_uses_port80" == 1 ]]; then
+    # Port 80 is a valid TLS port for HTTPS-CONNECT on networks that filter
+    # arbitrary high ports. Remove the generated HTTP-to-HTTPS redirect so
+    # HAProxy can own port 80 while CDN remains on 443.
+    python3 - "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+source = open(path, encoding="utf-8").read()
+result = re.sub(
+    r"\Aserver \{\n\s+listen 80;\n\s+listen \[::\]:80;.*?\n\}\n\n",
+    "",
+    source,
+    count=1,
+    flags=re.S,
+)
+if result == source:
+    raise SystemExit(f"expected nginx port-80 redirect block not found: {path}")
+open(path, "w", encoding="utf-8").write(result)
+PY
+    if [[ -f /etc/nginx/conf.d/default.conf ]] &&
+       grep -Eq 'listen[[:space:]]+80([[:space:];]|$)' /etc/nginx/conf.d/default.conf; then
+      mv /etc/nginx/conf.d/default.conf \
+        /etc/nginx/conf.d/default.conf.disabled-aobai
+    fi
+  fi
   speedtest_web_root="/var/www/aobai-speedtest-$DOMAIN"
   install -d -m 0755 "$speedtest_web_root"
   cp -a "$INSTALL_ROOT/opt/www/vhost/speedtest/." "$speedtest_web_root/"
