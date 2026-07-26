@@ -57,11 +57,19 @@ def build_inbound(protocol, port, node_id, domain, root, info):
             f"node {node_id} does not support {protocol}; endpoint says "
             f"{info.get('supported_protocols')}"
         )
-    endpoint_port = custom.get("offset_port_node") or custom.get("offset_port_user")
-    if endpoint_port and protocol not in ("http2", "https-connect"):
-        if int(endpoint_port) != port:
+    endpoint_ports = {
+        int(value)
+        for value in (
+            custom.get("offset_port_node"),
+            custom.get("offset_port_user"),
+        )
+        if str(value or "").isdigit()
+    }
+    if endpoint_ports and protocol not in ("http2", "https-connect"):
+        if port not in endpoint_ports:
             raise ValueError(
-                f"node {node_id} port mismatch: argument={port}, endpoint={endpoint_port}"
+                f"node {node_id} port mismatch: argument={port}, "
+                f"endpoint ports={sorted(endpoint_ports)}"
             )
     tag = f"5uf-{protocol}-{node_id}"
     protocol_id_base = {
