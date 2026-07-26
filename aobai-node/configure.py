@@ -186,12 +186,21 @@ def write_nginx(root, domain, cdn):
     if not cdn:
         target.unlink(missing_ok=True)
         return
-    blocks = []
+    servers = []
     for item in cdn:
-        blocks.append(f"""
+        port = int(item["public_port"])
+        servers.append(f"""
+server {{
+    listen {port} ssl;
+    listen [::]:{port} ssl;
+    server_name _;
+    ssl_certificate {root}/ssl/{domain}/fullchain.pem;
+    ssl_certificate_key {root}/ssl/{domain}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
     location ^~ {item['path']} {{
         proxy_http_version 1.1;
-        proxy_set_header Host {domain};
+        proxy_set_header Host $host;
         proxy_set_header X-Speedtest-Session $http_x_speedtest_session;
         proxy_set_header X-Speedtest-Seq $http_x_speedtest_seq;
         proxy_set_header X-Real-IP $remote_addr;
@@ -202,22 +211,7 @@ def write_nginx(root, domain, cdn):
         proxy_send_timeout 3600s;
         client_max_body_size 0;
         proxy_pass http://127.0.0.1:{item['inner_port']};
-    }}""")
-    target.write_text(f"""server {{
-    listen 80;
-    listen [::]:80;
-    server_name {domain};
-    return 301 https://$host$request_uri;
-}}
-
-server {{
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name {domain};
-    ssl_certificate {root}/ssl/{domain}/fullchain.pem;
-    ssl_certificate_key {root}/ssl/{domain}/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-{''.join(blocks)}
+    }}
     location = /client/php.php {{
         default_type text/plain;
         return 200 "$remote_addr\n";
@@ -239,6 +233,15 @@ server {{
         try_files $uri $uri/ /index.html;
     }}
 }}
+""")
+    target.write_text(f"""server {{
+    listen 80;
+    listen [::]:80;
+    server_name {domain};
+    return 301 https://$host$request_uri;
+}}
+
+{''.join(servers)}
 """)
 
 
