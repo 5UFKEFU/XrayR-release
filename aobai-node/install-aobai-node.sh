@@ -33,7 +33,7 @@ usage() {
   --mu-key KEY          SSPanel mu_key，默认读取 MU_KEY，未设置时为 5uf5uf
   --install-root DIR    安装目录，默认 /home/<sudo调用者>/aobai-node
   --cert-mode MODE      letsencrypt、cloudflare 或 existing
-  --cloudflare-token T  Cloudflare API Token（会写入 root-only 凭证文件）
+  --cloudflare-token T  Cloudflare API Token（直接写入用户 crontab 命令）
   --email EMAIL         Let's Encrypt 邮箱
   --prepare-only        只下载、解压和校验，不生成配置、不启动
 
@@ -83,7 +83,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   cron openssl python3 liblua5.4-0 >/dev/null
 
 tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
+trap 'rm -rf "$tmp_dir"; rm -f /run/aobai-node-cloudflare.ini' EXIT
 curl -fL --retry 3 --connect-timeout 20 "$ARCHIVE_URL" -o "$tmp_dir/release.tar.gz"
 mkdir -p "$INSTALL_ROOT"
 tar -xzf "$tmp_dir/release.tar.gz" -C "$INSTALL_ROOT"
@@ -164,8 +164,11 @@ if [[ "$needs_certificate" == 1 ]]; then
     rm -f \
       /etc/letsencrypt/renewal-hooks/pre/aobai-node-stop-nginx \
       /etc/letsencrypt/renewal-hooks/post/aobai-node-start-nginx
-    install -d -m 0700 /etc/letsencrypt/credentials
-    CLOUDFLARE_CREDENTIALS="/etc/letsencrypt/credentials/aobai-node-cloudflare.ini"
+    [[ "$CLOUDFLARE_TOKEN" =~ ^[A-Za-z0-9_-]+$ ]] || {
+      echo "Cloudflare Token 包含不支持的字符" >&2
+      exit 2
+    }
+    CLOUDFLARE_CREDENTIALS="/run/aobai-node-cloudflare.ini"
     printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_TOKEN" \
       >"$CLOUDFLARE_CREDENTIALS"
     chmod 0600 "$CLOUDFLARE_CREDENTIALS"
@@ -332,11 +335,38 @@ systemctl restart aobai-node-sbox
 EOF
   chmod 0755 "/etc/letsencrypt/renewal-hooks/deploy/aobai-node-$DOMAIN"
 
-  cat >/etc/cron.d/aobai-node-cert-renew <<'EOF'
-# 每周一 03:17 检查证书；Certbot 仅在进入续签窗口时执行续签。
-17 3 * * 1 root certbot renew --quiet --no-random-sleep-on-renew
+  cat >/usr/local/sbin/aobai-cert-renew <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+credentials=/run/aobai-node-cloudflare.ini
+cleanup() {
+  rm -f "$credentials"
+}
+trap cleanup EXIT
+if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+  umask 077
+  printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_API_TOKEN" >"$credentials"
+  certbot renew --quiet --no-random-sleep-on-renew \
+    --dns-cloudflare-credentials "$credentials"
+else
+  certbot renew --quiet --no-random-sleep-on-renew
+fi
 EOF
-  chmod 0644 /etc/cron.d/aobai-node-cert-renew
+  chmod 0755 /usr/local/sbin/aobai-cert-renew
+
+  if [[ "$CERT_MODE" == "cloudflare" ]]; then
+    cron_command="17 3 * * 1 CLOUDFLARE_API_TOKEN='$CLOUDFLARE_TOKEN' sudo -n /usr/local/sbin/aobai-cert-renew # aobai-node-cert-renew"
+  else
+    cron_command="17 3 * * 1 sudo -n /usr/local/sbin/aobai-cert-renew # aobai-node-cert-renew"
+  fi
+  {
+    crontab -u "$RUN_USER" -l 2>/dev/null |
+      grep -v 'aobai-node-cert-renew' || true
+    echo "$cron_command"
+  } | crontab -u "$RUN_USER" -
+
+  rm -f /etc/cron.d/aobai-node-cert-renew
+  rm -f /etc/letsencrypt/credentials/aobai-node-cloudflare.ini
   systemctl enable --now cron
   systemctl disable --now certbot.timer 2>/dev/null || true
 fi

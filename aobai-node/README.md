@@ -46,13 +46,14 @@ bash install-aobai-node.sh uk4.xinhuanet.network \
   --email admin@example.com
 ```
 
-Token 只需授予目标 Zone 的 `DNS:Edit` 权限。脚本会将 Token 写入
-`/etc/letsencrypt/credentials/aobai-node-cloudflare.ini`，权限设为 `600`。
-由于 Token 直接出现在命令行中，部署后应清理对应的 shell history。
+Token 只需授予目标 Zone 的 `DNS:Edit` 权限。脚本会将 Token 直接写入
+部署用户的 `crontab -l` 命令。Certbot 运行期间只在内存文件系统 `/run`
+临时生成权限为 `600` 的凭证，运行结束立即删除，不长期保存凭证文件。
+Token 会同时出现在 shell history 和用户 crontab 中。
 
-脚本会安装 `/etc/cron.d/aobai-node-cert-renew`，每周一 03:17 执行
-`certbot renew`。Certbot 每周检查证书，但只在证书进入续签窗口时续签；
-成功后会同步项目证书并重启 sbox。Cloudflare 模式不需要停止 Nginx。
+用户 crontab 每周一 03:17 执行续签检查。Certbot 只在证书进入续签窗口
+时真正续签；成功后会同步项目证书、无中断 reload Nginx，并重启 sbox。
+Cloudflare DNS 验证期间不需要停止或重启 Nginx。
 
 ## 部署前提
 
