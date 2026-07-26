@@ -140,7 +140,7 @@ INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   ca-certificates curl jq nginx certbot python3-certbot-dns-cloudflare \
-  cron openssl python3 liblua5.4-0 >/dev/null
+  cron openssl python3 liblua5.4-0 haproxy >/dev/null
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"; rm -f /run/aobai-node-cloudflare.ini' EXIT
@@ -155,6 +155,14 @@ for binary in sbox-server-embedded redis-server-embedded redis-cli-embedded spee
     exit 1
   }
 done
+
+# The release HAProxy is built on a recent Ubuntu. Older supported hosts may
+# have an older glibc, so use the distro HAProxy when the bundled one cannot
+# start on the target host.
+if ! "$INSTALL_ROOT/bin/haproxy" -vv >/dev/null 2>&1; then
+  install -m 0755 /usr/sbin/haproxy "$INSTALL_ROOT/bin/haproxy"
+  chown "$RUN_USER:$RUN_USER" "$INSTALL_ROOT/bin/haproxy"
+fi
 
 if [[ "$PREPARE_ONLY" == 1 ]]; then
   echo "准备完成: $INSTALL_ROOT"
@@ -315,7 +323,10 @@ chown "$RUN_USER:$RUN_USER" "$INSTALL_ROOT/env/aobai-node.env"
 cat >"$INSTALL_ROOT/etc/redis/redis.conf" <<EOF
 bind 127.0.0.1
 port 6382
-protected-mode yes
+# This instance is strictly loopback-only. Some older fleet images incorrectly
+# classify loopback clients under Redis protected mode, so disable that second
+# guard while retaining the explicit 127.0.0.1 bind.
+protected-mode no
 daemonize no
 databases 32
 dir $INSTALL_ROOT/var/redis/data
@@ -395,6 +406,12 @@ if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
     "/etc/nginx/sites-available/aobai-$DOMAIN"
   ln -sfn "/etc/nginx/sites-available/aobai-$DOMAIN" \
     "/etc/nginx/sites-enabled/aobai-$DOMAIN"
+  # Debian/Ubuntu nginx includes sites-enabled. Official nginx.org packages
+  # include only conf.d, so make the same vhost visible there when necessary.
+  if ! nginx -T 2>&1 | grep -Fq "/etc/nginx/sites-enabled/"; then
+    ln -sfn "/etc/nginx/sites-available/aobai-$DOMAIN" \
+      "/etc/nginx/conf.d/aobai-$DOMAIN.conf"
+  fi
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl enable --now nginx
@@ -402,7 +419,8 @@ if [[ -f "$INSTALL_ROOT/generated/nginx-$DOMAIN.conf" ]]; then
 else
   rm -f \
     "/etc/nginx/sites-enabled/aobai-$DOMAIN" \
-    "/etc/nginx/sites-available/aobai-$DOMAIN"
+    "/etc/nginx/sites-available/aobai-$DOMAIN" \
+    "/etc/nginx/conf.d/aobai-$DOMAIN.conf"
   nginx -t
   systemctl is-active --quiet nginx && systemctl reload nginx
 fi
