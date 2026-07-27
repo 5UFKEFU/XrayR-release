@@ -1,5 +1,9 @@
 # AoBai 节点一键部署
 
+香港节点 `hk1`（节点 16）、`hk2`（节点 17）、`hk3`（节点 18）和
+`hk5`（节点 144）的 CDN/HTTP2 入站会自动将 AI 域名流量转发到美国
+出口，其他流量仍使用香港出口。
+
 安装器会从 SSPanel 的 `/mod_mu/nodes/<节点ID>/info` 读取 Reality、Host、Path
 等协议参数，下载预编译 Linux 发布包，生成配置、申请证书并安装 systemd 服务。
 

@@ -23,7 +23,7 @@ TRANSITION_EGRESS = {
     192: "de",
 }
 
-HK_NODE_IDS = {17, 144}
+HK_NODE_IDS = {16, 17, 18, 144}
 AI_DOMAIN_SUFFIXES = [
     "openai.com",
     "chatgpt.com",
