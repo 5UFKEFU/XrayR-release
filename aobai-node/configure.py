@@ -340,6 +340,15 @@ def main():
             outbound["tag"] = f"egress-{country}"
             outbounds.append(outbound)
         if hk_inbound_tags:
+            # Mobile apps can send QUIC as bare destination IPs, so domain
+            # rules cannot reliably identify AI traffic. Keep UDP functional
+            # and route all UDP from Hong Kong nodes through the US exit.
+            routes.append({
+                "action": "route",
+                "inbound": hk_inbound_tags,
+                "network": ["udp"],
+                "outbound": "egress-usa",
+            })
             routes.append({
                 "action": "route",
                 "inbound": hk_inbound_tags,
