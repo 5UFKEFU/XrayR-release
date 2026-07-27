@@ -7,6 +7,8 @@
 
 安装器会从 SSPanel 的 `/mod_mu/nodes/<节点ID>/info` 读取 Reality、Host、Path
 等协议参数，下载预编译 Linux 发布包，生成配置、申请证书并安装 systemd 服务。
+CDN/VLESS-XHTTP 服务端统一使用 `mode: auto`，兼容 Shadowrocket，同时继续
+接受客户端的 `stream-up` GET/POST 会话。
 
 ## 最短用法
 

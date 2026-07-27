@@ -172,7 +172,10 @@ def build_inbound(protocol, port, node_id, domain, root, info):
             xhttp_settings={
                 "host": custom.get("host") or domain,
                 "path": path + "/",
-                "mode": "stream-up",
+                # `auto` accepts the same GET-downlink/POST-stream-up flow and
+                # is compatible with Shadowrocket variants that do not behave
+                # consistently when the server is pinned to `stream-up`.
+                "mode": "auto",
                 "sessionPlacement": "header",
                 "sessionKey": "X-Speedtest-Session",
                 "seqPlacement": "header",
