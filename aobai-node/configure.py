@@ -347,7 +347,8 @@ def main():
             routes.append({
                 "action": "block",
                 "inbound": hk_inbound_tags,
-                "protocol": ["quic"],
+                "network": ["udp"],
+                "port": [443],
                 "outbound": "block",
             })
             routes.append({
