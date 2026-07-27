@@ -340,6 +340,17 @@ def main():
             outbound["tag"] = f"egress-{country}"
             outbounds.append(outbound)
         if hk_inbound_tags:
+            # QUIC connections often arrive as bare Cloudflare IP addresses, so
+            # domain-based AI routing cannot identify them. Block UDP/443 for
+            # Hong Kong inbounds to force TCP/TLS fallback, where SNI restores
+            # the destination domain and the AI rule below can route it to USA.
+            routes.append({
+                "action": "block",
+                "inbound": hk_inbound_tags,
+                "network": ["udp"],
+                "port": [443],
+                "outbound": "block",
+            })
             routes.append({
                 "action": "route",
                 "inbound": hk_inbound_tags,
