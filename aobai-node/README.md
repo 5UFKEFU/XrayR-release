@@ -33,6 +33,11 @@ CDN 使用系统 Nginx；HTTP2 使用随发布包提供的 HAProxy。
 部署时会按服务器公网 IP 自动获取测速节点的城市、国家、经纬度和时区，
 写入 `speedtestd` 的 systemd 环境，避免所有节点回退为发布包内置的香港位置。
 
+香港过渡节点（当前为节点 `17`、`144`）默认保持香港直出，但 OpenAI、
+ChatGPT、Claude、Gemini、Perplexity 等 AI 服务域名会优先通过
+`egress-usa` 美国 Reality 出口访问；该规则同时覆盖节点的 CDN 和 HTTP2
+入站，并排在香港默认出口规则之前。
+
 移除已有部署中的单个协议或端口：
 
 ```bash

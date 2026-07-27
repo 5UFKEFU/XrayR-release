@@ -23,6 +23,27 @@ TRANSITION_EGRESS = {
     192: "de",
 }
 
+HK_NODE_IDS = {17, 144}
+AI_DOMAIN_SUFFIXES = [
+    "openai.com",
+    "chatgpt.com",
+    "oaistatic.com",
+    "oaiusercontent.com",
+    "anthropic.com",
+    "claude.ai",
+    "gemini.google.com",
+    "generativelanguage.googleapis.com",
+    "ai.google.dev",
+    "aistudio.google.com",
+    "bard.google.com",
+    "perplexity.ai",
+    "grok.com",
+    "x.ai",
+    "poe.com",
+    "character.ai",
+    "midjourney.com",
+]
+
 
 def split_csv(value):
     return [item.strip() for item in value.split(",") if item.strip()]
@@ -285,6 +306,7 @@ def main():
     inbound_ids = []
     cdn = []
     egress_inbounds = {}
+    hk_inbound_tags = []
     for protocol, port, node_id in zip(protocols, ports, node_ids):
         info = node_info(args.panel_url, node_id)
         actual, tag, inbound_id, inbound = build_inbound(
@@ -299,23 +321,36 @@ def main():
         country = TRANSITION_EGRESS.get(node_id)
         if country:
             egress_inbounds.setdefault(country, []).append(tag)
+        if node_id in HK_NODE_IDS:
+            hk_inbound_tags.append(tag)
 
     outbounds = [{"tag": "direct", "type": "direct"},
                  {"tag": "block", "type": "block"}]
     routes = []
-    if egress_inbounds:
+    if egress_inbounds or hk_inbound_tags:
         egress_path = pathlib.Path(args.root) / "etc/sbox/tier1-egress.json"
         if not egress_path.is_file():
             raise SystemExit(f"missing country egress map: {egress_path}")
         egress_map = json.loads(egress_path.read_text())
-        for country, tags in egress_inbounds.items():
+        required_countries = list(egress_inbounds)
+        if hk_inbound_tags and "usa" not in required_countries:
+            required_countries.append("usa")
+        for country in required_countries:
             outbound = dict(egress_map[country])
             outbound["tag"] = f"egress-{country}"
             outbounds.append(outbound)
+        if hk_inbound_tags:
+            routes.append({
+                "action": "route",
+                "inbound": hk_inbound_tags,
+                "domain_suffix": AI_DOMAIN_SUFFIXES,
+                "outbound": "egress-usa",
+            })
+        for country, tags in egress_inbounds.items():
             routes.append({
                 "action": "route",
                 "inbound": tags,
-                "outbound": outbound["tag"],
+                "outbound": f"egress-{country}",
             })
 
     bootstrap = {
