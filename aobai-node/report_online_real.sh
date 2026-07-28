@@ -6,10 +6,13 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 MONITOR_URL="${MONITOR_URL:-http://127.0.0.1:28910/monitor/status}"
+SSM_API_URL="${SSM_API_URL:-http://127.0.0.1:28912}"
+ONLINE_WINDOW_SEC="${ONLINE_WINDOW_SEC:-300}"
+SAMPLE_SECONDS="${SAMPLE_SECONDS:-10}"
 API_HOST="${API_HOST:-5ufradius.5ufkefu.com}"
 API_AUTH="${API_AUTH:-iaodsiu}"
 INSTALL_ROOT="${INSTALL_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-export MONITOR_URL API_HOST API_AUTH INSTALL_ROOT
+export MONITOR_URL SSM_API_URL ONLINE_WINDOW_SEC SAMPLE_SECONDS API_HOST API_AUTH INSTALL_ROOT
 
 python3 - <<'PY'
 import datetime
@@ -18,10 +21,15 @@ import json
 import os
 import re
 import subprocess
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
 monitor_url = os.environ["MONITOR_URL"]
+ssm_api_url = os.environ["SSM_API_URL"].rstrip("/")
+online_window_sec = int(os.environ["ONLINE_WINDOW_SEC"])
+sample_seconds = int(os.environ["SAMPLE_SECONDS"])
 api_host = os.environ["API_HOST"]
 auth = os.environ["API_AUTH"]
 root = os.environ["INSTALL_ROOT"]
@@ -55,25 +63,76 @@ for node_id in node_ids:
         if user.get("uuid") and user.get("id") is not None
     }
 
-with urllib.request.urlopen(monitor_url, timeout=10) as response:
-    sessions = json.load(response)
-
 combined = {node_id: set() for node_id in node_ids}
 new_counts = {node_id: set() for node_id in node_ids}
-for session in sessions if isinstance(sessions, list) else []:
-    online = session.get("Online")
-    status = str(session.get("Status", "")).lower()
-    if not (online in (1, True, "1") or status == "active"):
-        continue
-    match = re.search(r"-(\d+)$", str(session.get("Tag", "")))
-    if not match:
-        continue
-    node_id = int(match.group(1))
-    if node_id not in combined:
-        continue
-    raw_user = str(session.get("UserID", "")).strip()
-    if not raw_user:
-        continue
+
+# SSM 的 tcpSessions/udpSessions 是累计值，不能用来判断当前在线。采样两次
+# per-user/per-inbound 流量计数，仅把采样期间有字节或包增量的用户续活。
+ssm_protocols = ("vless-xray", "https-connect")
+
+def fetch_ssm_counters():
+    counters = {}
+    for protocol in ssm_protocols:
+        url = f"{ssm_api_url}/{protocol}/server/v1/stats"
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:
+                users = (json.load(response) or {}).get("users") or []
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                continue
+            raise
+        for entry in users:
+            raw_user = str(entry.get("username") or "").strip()
+            if raw_user.startswith("aobai-"):
+                raw_user = raw_user[6:]
+            if not raw_user:
+                continue
+            for tag, traffic in (entry.get("inboundTraffic") or {}).items():
+                match = re.search(r"-(\d+)$", str(tag))
+                if not match:
+                    continue
+                node_id = int(match.group(1))
+                if node_id not in combined:
+                    continue
+                counters[(node_id, raw_user)] = sum(
+                    int(traffic.get(field) or 0)
+                    for field in (
+                        "uplinkBytes", "downlinkBytes",
+                        "uplinkPackets", "downlinkPackets",
+                    )
+                )
+    return counters
+
+before = fetch_ssm_counters()
+time.sleep(max(1, sample_seconds))
+after = fetch_ssm_counters()
+now = int(time.time())
+activity_path = os.path.join(root, "var", "online-activity.json")
+os.makedirs(os.path.dirname(activity_path), exist_ok=True)
+try:
+    with open(activity_path, encoding="utf-8") as handle:
+        activity = json.load(handle)
+except (FileNotFoundError, ValueError):
+    activity = {}
+
+for key, value in after.items():
+    if value > before.get(key, value):
+        node_id, raw_user = key
+        activity[f"{node_id}|{raw_user}"] = now
+
+activity = {
+    key: int(last_seen)
+    for key, last_seen in activity.items()
+    if now - int(last_seen) <= online_window_sec
+}
+tmp_activity_path = activity_path + ".tmp"
+with open(tmp_activity_path, "w", encoding="utf-8") as handle:
+    json.dump(activity, handle, separators=(",", ":"))
+os.replace(tmp_activity_path, activity_path)
+
+for key in activity:
+    node_text, raw_user = key.split("|", 1)
+    node_id = int(node_text)
     user = uuid_to_user[node_id].get(raw_user, f"uuid:{raw_user}")
     combined[node_id].add(user)
     new_counts[node_id].add(user)

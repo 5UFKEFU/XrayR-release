@@ -329,6 +329,11 @@ def main():
 
     outbounds = [{"tag": "direct", "type": "direct"},
                  {"tag": "block", "type": "block"}]
+    # HTTPS CONNECT 的默认国家为 hk，动态用户路由会将基础 UUID 指向
+    # egress-hk。香港本机出口就是 direct，因此必须提供同义出站，
+    # 否则服务重启并重新生成路由后，HTTP2 会报 outbound not found。
+    if "http2" in protocols:
+        outbounds.append({"tag": "egress-hk", "type": "direct"})
     routes = []
     if egress_inbounds or hk_inbound_tags:
         egress_path = pathlib.Path(args.root) / "etc/sbox/tier1-egress.json"
