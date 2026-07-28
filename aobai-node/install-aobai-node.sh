@@ -142,6 +142,29 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   ca-certificates curl jq nginx certbot python3-certbot-dns-cloudflare \
   cron openssl python3 liblua5.4-0 haproxy >/dev/null
 
+# The node writes detailed logs to journald.  Ubuntu rsyslog would otherwise
+# duplicate every line into /var/log/syslog; large multi-node deployments can
+# fill the system disk within hours.  Keep the bounded journal copy and stop
+# only the duplicate rsyslog copy before the node is restarted below.
+if command -v rsyslogd >/dev/null 2>&1; then
+  printf "%s\n" \
+    "if (\$programname == 'sbox-server-embedded') then stop" \
+    > /etc/rsyslog.d/30-aobai-node-drop.conf
+  rsyslogd -N1 >/dev/null
+  systemctl restart rsyslog
+fi
+
+# Some supported hosts use /var/log mode 0775 root:syslog.  Recent logrotate
+# refuses to rotate logs below a group-writable directory unless the rule has
+# an explicit `su` directive.
+if [[ -f /etc/logrotate.d/rsyslog ]] &&
+   ! grep -Eq '^[[:space:]]*su[[:space:]]+' /etc/logrotate.d/rsyslog; then
+  log_group="$(stat -c %G /var/log)"
+  sed -i "0,/^[[:space:]]*{/s//&\\n\\tsu root $log_group/" \
+    /etc/logrotate.d/rsyslog
+  logrotate -d /etc/logrotate.d/rsyslog >/dev/null 2>&1
+fi
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"; rm -f /run/aobai-node-cloudflare.ini' EXIT
 curl -fL --retry 3 --connect-timeout 20 "$ARCHIVE_URL" -o "$tmp_dir/release.tar.gz"
