@@ -65,7 +65,7 @@ if [[ $# -ge 3 && "$2" == "--remove-service" ]]; then
     [[ -n "$INSTALL_ROOT" ]] && remove_args+=(--install-root "$INSTALL_ROOT")
     exec sudo -E env AOBAI_RUN_USER="${USER}" bash "$0" "${remove_args[@]}"
   fi
-  RUN_USER="${SUDO_USER:-${AOBAI_RUN_USER:-jeff}}"
+  RUN_USER="${AOBAI_RUN_USER:-${SUDO_USER:-jeff}}"
   [[ "$RUN_USER" != root ]] || RUN_USER="${AOBAI_RUN_USER:-jeff}"
   RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
   INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
@@ -132,7 +132,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exec sudo -E bash "$0" "${sudo_args[@]}"
 fi
 
-RUN_USER="${SUDO_USER:-jeff}"
+RUN_USER="${AOBAI_RUN_USER:-${SUDO_USER:-jeff}}"
 [[ "$RUN_USER" != root ]] || RUN_USER="${AOBAI_RUN_USER:-jeff}"
 RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
 INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
