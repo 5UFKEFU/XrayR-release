@@ -154,6 +154,18 @@ if command -v rsyslogd >/dev/null 2>&1; then
   systemctl restart rsyslog
 fi
 
+# Keep the detailed node journal available for diagnosis without allowing a
+# busy server to consume the whole system disk.
+install -d -m 0755 /etc/systemd/journald.conf.d
+printf "%s\n" \
+  "[Journal]" \
+  "SystemMaxUse=1G" \
+  "SystemKeepFree=2G" \
+  "RuntimeMaxUse=256M" \
+  "MaxRetentionSec=14day" \
+  > /etc/systemd/journald.conf.d/30-aobai-node-limits.conf
+systemctl restart systemd-journald
+
 # Some supported hosts use /var/log mode 0775 root:syslog.  Recent logrotate
 # refuses to rotate logs below a group-writable directory unless the rule has
 # an explicit `su` directive.
