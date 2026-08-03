@@ -11,6 +11,7 @@ CERT_MODE="${CERT_MODE:-letsencrypt}"
 LE_EMAIL="${LE_EMAIL:-}"
 CLOUDFLARE_TOKEN="${CLOUDFLARE_TOKEN:-}"
 PREPARE_ONLY=0
+EXISTING_ACTION="${EXISTING_ACTION:-ask}"
 
 usage() {
   cat <<'EOF'
@@ -39,6 +40,8 @@ usage() {
   --cloudflare-token T  Cloudflare API Token（直接写入用户 crontab 命令）
   --email EMAIL         Let's Encrypt 邮箱
   --prepare-only        只下载、解压和校验，不生成配置、不启动
+  --existing-action A  已有部署时的处理方式：append（推荐）、overwrite 或 abort。
+                       交互终端默认询问；非交互终端默认 abort，避免误覆盖。
 
 Cloudflare DNS-01 示例（域名无需预先解析，80端口无需开放）:
   bash install-aobai-node.sh ... \
@@ -117,6 +120,7 @@ while [[ $# -gt 0 ]]; do
     --cloudflare-token) CLOUDFLARE_TOKEN="${2:?}"; shift 2 ;;
     --email) LE_EMAIL="${2:?}"; shift 2 ;;
     --prepare-only) PREPARE_ONLY=1; shift ;;
+    --existing-action) EXISTING_ACTION="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
@@ -129,6 +133,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   [[ -n "$LE_EMAIL" ]] && sudo_args+=(--email "$LE_EMAIL")
   [[ -n "$CLOUDFLARE_TOKEN" ]] && sudo_args+=(--cloudflare-token "$CLOUDFLARE_TOKEN")
   [[ "$PREPARE_ONLY" == 1 ]] && sudo_args+=(--prepare-only)
+  sudo_args+=(--existing-action "$EXISTING_ACTION")
   exec sudo -E bash "$0" "${sudo_args[@]}"
 fi
 
@@ -136,6 +141,112 @@ RUN_USER="${AOBAI_RUN_USER:-${SUDO_USER:-jeff}}"
 [[ "$RUN_USER" != root ]] || RUN_USER="${AOBAI_RUN_USER:-jeff}"
 RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
 INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
+
+state_file="$INSTALL_ROOT/etc/deployment.json"
+if [[ -s "$state_file" && "$PREPARE_ONLY" != 1 ]]; then
+  current_domain="$(jq -r '.domain' "$state_file")"
+  current_count="$(jq '.protocols | length' "$state_file")"
+  echo "检测到已有部署: $state_file"
+  echo "现有域名: $current_domain，服务数量: $current_count"
+  echo "新请求: $DOMAIN / $PROTOCOLS / $PORTS / $NODE_IDS"
+
+  if [[ "$EXISTING_ACTION" == ask ]]; then
+    if [[ -t 0 ]]; then
+      echo
+      echo "请选择处理方式："
+      echo "  1) 追加到现有部署（推荐，不覆盖已有服务）"
+      echo "  2) 覆盖现有部署（会删除未包含在本次参数中的服务）"
+      echo "  3) 取消"
+      read -r -p "请输入 [1/2/3，默认 1]: " answer
+      case "${answer:-1}" in
+        1) EXISTING_ACTION=append ;;
+        2) EXISTING_ACTION=overwrite ;;
+        *) EXISTING_ACTION=abort ;;
+      esac
+    else
+      echo "非交互运行未指定 --existing-action，已安全取消。" >&2
+      echo "追加请使用 --existing-action append；覆盖请显式使用 overwrite。" >&2
+      exit 2
+    fi
+  fi
+
+  case "$EXISTING_ACTION" in
+    append)
+      IFS=',' read -ra requested_protocols <<<"$PROTOCOLS"
+      IFS=',' read -ra requested_ports <<<"$PORTS"
+      IFS=',' read -ra requested_node_ids <<<"$NODE_IDS"
+      if [[ "${#requested_protocols[@]}" -ne "${#requested_ports[@]}" ||
+            "${#requested_ports[@]}" -ne "${#requested_node_ids[@]}" ]]; then
+        echo "协议、端口和节点 ID 数量不一致。" >&2
+        exit 2
+      fi
+
+      existing_protocols="$(jq -r '.protocols | join(",")' "$state_file")"
+      existing_ports="$(jq -r '.ports | map(tostring) | join(",")' "$state_file")"
+      existing_node_ids="$(jq -r '.node_ids | map(tostring) | join(",")' "$state_file")"
+
+      for i in "${!requested_protocols[@]}"; do
+        protocol="${requested_protocols[$i],,}"
+        port="${requested_ports[$i]}"
+        node_id="${requested_node_ids[$i]}"
+        [[ "$port" =~ ^[0-9]+$ ]] || {
+          echo "端口必须是数字: $port" >&2
+          exit 2
+        }
+        conflict="$(jq -r --argjson port "$port" --arg protocol "$protocol" --argjson node_id "$node_id" '
+          [range(0; (.ports | length)) as $i |
+           select(.ports[$i] == $port) |
+           {protocol: .protocols[$i], node_id: .node_ids[$i]}] |
+          if length == 0 then "none"
+          elif any(.[]; (.protocol | ascii_downcase) == $protocol and .node_id == $node_id) then "same"
+          elif $protocol == "cdn" and all(.[]; (.protocol | ascii_downcase) == "cdn") then "shared_cdn"
+          else "conflict"
+          end
+        ' "$state_file")"
+        case "$conflict" in
+          conflict)
+            echo "端口 $port 已被其他服务使用，拒绝追加。" >&2
+            exit 2
+            ;;
+          same)
+            echo "服务已存在，跳过: $protocol / $port / $node_id"
+            ;;
+          shared_cdn)
+            echo "CDN 端口 $port 将按 Host/SNI 共享。"
+            existing_protocols+="${existing_protocols:+,}$protocol"
+            existing_ports+="${existing_ports:+,}$port"
+            existing_node_ids+="${existing_node_ids:+,}$node_id"
+            ;;
+          none)
+            existing_protocols+="${existing_protocols:+,}$protocol"
+            existing_ports+="${existing_ports:+,}$port"
+            existing_node_ids+="${existing_node_ids:+,}$node_id"
+            ;;
+        esac
+      done
+
+      if [[ "$DOMAIN" != "$current_domain" ]]; then
+        echo "提示：追加模式保留现有源站域名 $current_domain；请求域名 $DOMAIN 应在面板/CDN 中指向该源站。"
+      fi
+      DOMAIN="$current_domain"
+      PROTOCOLS="$existing_protocols"
+      PORTS="$existing_ports"
+      NODE_IDS="$existing_node_ids"
+      echo "将追加并保留全部现有服务。"
+      ;;
+    overwrite)
+      echo "警告：已明确选择覆盖现有部署。"
+      ;;
+    abort)
+      echo "已取消，未修改现有部署。"
+      exit 0
+      ;;
+    *)
+      echo "无效的 --existing-action: $EXISTING_ACTION" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \

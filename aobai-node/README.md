@@ -29,6 +29,23 @@ bash install-aobai-node.sh fr2.xinhuanet.network \
 三组逗号列表必须一一对应。支持的协议名称为：
 `anytls`、`vless`、`cdn`、`naive`、`http2`、`hysteria2`。
 
+目标安装目录已有 `etc/deployment.json` 时，安装器不会再静默覆盖。交互
+运行会提示选择追加（推荐）、覆盖或取消；非交互运行默认取消，必须显式传入：
+
+```bash
+# 保留全部已有服务并追加
+bash install-aobai-node.sh hk4.febbox.cn cdn 443 193 \
+  --existing-action append
+
+# 明确重建并覆盖原部署
+bash install-aobai-node.sh example.com vless 38573 196 \
+  --existing-action overwrite
+```
+
+追加模式会保留现有源站域名和证书。面板中的 CDN Host 可以使用其他域名；
+多个 CDN 节点允许使用不同 Host/SNI 共享 `443`，Nginx 会为每个 Host 生成
+独立虚拟主机。非 CDN 服务出现端口冲突时安装器会拒绝继续。
+
 需要使用不同面板或 mu_key 时：
 
 ```bash

@@ -187,6 +187,7 @@ def build_inbound(protocol, port, node_id, domain, root, info):
             "public_port": port,
             "inner_port": inner_port,
             "path": path,
+            "server_name": custom.get("host") or domain,
         }
     elif protocol in ("http2", "https-connect"):
         protocol = "http2"
@@ -227,13 +228,21 @@ def write_nginx(root, domain, cdn):
         target.unlink(missing_ok=True)
         return
     servers = []
+    virtual_hosts = set()
     for item in cdn:
         port = int(item["public_port"])
+        server_name = item["server_name"].lower()
+        virtual_host = (port, server_name)
+        if virtual_host in virtual_hosts:
+            raise ValueError(
+                f"duplicate CDN virtual host: {server_name}:{port}"
+            )
+        virtual_hosts.add(virtual_host)
         servers.append(f"""
 server {{
     listen {port} ssl;
     listen [::]:{port} ssl;
-    server_name _;
+    server_name {server_name};
     ssl_certificate {root}/ssl/{domain}/fullchain.pem;
     ssl_certificate_key {root}/ssl/{domain}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
