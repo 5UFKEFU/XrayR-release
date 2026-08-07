@@ -33,6 +33,11 @@ usage() {
   --remove-service P    从已有部署移除一个协议或端口，例如：
                         bash install-aobai-node.sh sg1.example.com --remove-service anytls
                         bash install-aobai-node.sh sg1.example.com --remove-service 443
+  --update-binaries     只更新已有部署的 bin/ 二进制并重启服务，
+                        不改配置与参数。例如：
+                        bash install-aobai-node.sh --update-binaries
+                        bash install-aobai-node.sh --update-binaries \
+                          --install-root /home/jeff/aobai-node
   --panel-url URL       面板地址，默认 https://www.5ufkefu.com
   --mu-key KEY          SSPanel mu_key，默认读取 MU_KEY，未设置时为 5uf5uf
   --install-root DIR    安装目录，默认 /home/<sudo调用者>/aobai-node
@@ -51,6 +56,83 @@ Cloudflare DNS-01 示例（域名无需预先解析，80端口无需开放）:
 注意：直接传 Token 可能保存在 shell history；建议部署后清理对应历史记录。
 EOF
 }
+
+if [[ $# -ge 1 && "$1" == "--update-binaries" ]]; then
+  shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install-root) INSTALL_ROOT="${2:?}"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "更新二进制模式不支持参数: $1" >&2; exit 2 ;;
+    esac
+  done
+  if [[ "${EUID}" -ne 0 ]]; then
+    update_args=(--update-binaries)
+    [[ -n "$INSTALL_ROOT" ]] && update_args+=(--install-root "$INSTALL_ROOT")
+    exec sudo -E env AOBAI_RUN_USER="${USER}" bash "$0" "${update_args[@]}"
+  fi
+  RUN_USER="${AOBAI_RUN_USER:-${SUDO_USER:-jeff}}"
+  [[ "$RUN_USER" != root ]] || RUN_USER="${AOBAI_RUN_USER:-jeff}"
+  RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
+  INSTALL_ROOT="${INSTALL_ROOT:-$RUN_HOME/aobai-node}"
+  state_file="$INSTALL_ROOT/etc/deployment.json"
+  [[ -s "$state_file" ]] || {
+    echo "找不到部署状态 $state_file；请先用新版安装脚本完整部署一次。" >&2
+    exit 1
+  }
+
+  tmp_dir="$(mktemp -d)"
+  staging_bin="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir" "$staging_bin"' EXIT
+  echo "下载发布包: $ARCHIVE_URL"
+  curl -fL --retry 3 --connect-timeout 20 "$ARCHIVE_URL" -o "$tmp_dir/release.tar.gz"
+  tar -xzf "$tmp_dir/release.tar.gz" -C "$tmp_dir"
+  src_bin=""
+  if [[ -d "$tmp_dir/bin" ]]; then
+    src_bin="$tmp_dir/bin"
+  else
+    for candidate in "$tmp_dir"/*/bin; do
+      if [[ -d "$candidate" ]]; then
+        src_bin="$candidate"
+        break
+      fi
+    done
+  fi
+  [[ -n "$src_bin" ]] || {
+    echo "发布包中找不到 bin/ 目录" >&2
+    exit 1
+  }
+
+  mkdir -p "$INSTALL_ROOT/bin"
+  for binary in sbox-server-embedded redis-server-embedded redis-cli-embedded speedtestd haproxy; do
+    [[ -f "$src_bin/$binary" ]] || {
+      echo "发布包缺少 bin/$binary" >&2
+      exit 1
+    }
+    install -m 0755 "$src_bin/$binary" "$staging_bin/$binary"
+  done
+  if ! "$staging_bin/haproxy" -vv >/dev/null 2>&1; then
+    install -m 0755 /usr/sbin/haproxy "$staging_bin/haproxy"
+  fi
+  for binary in sbox-server-embedded redis-server-embedded redis-cli-embedded speedtestd haproxy; do
+    [[ -x "$staging_bin/$binary" ]] || {
+      echo "暂存二进制不可执行: $binary" >&2
+      exit 1
+    }
+    install -m 0755 -o "$RUN_USER" -g "$RUN_USER" \
+      "$staging_bin/$binary" "$INSTALL_ROOT/bin/$binary"
+  done
+
+  echo "重启服务以加载新二进制..."
+  systemctl restart aobai-node-redis aobai-node-speedtestd aobai-node-sbox || {
+    echo "服务重启失败；二进制可能已更新。请检查: systemctl status aobai-node-{redis,speedtestd,sbox}" >&2
+    exit 1
+  }
+  sleep 3
+  systemctl --no-pager --full status aobai-node-sbox | sed -n '1,12p'
+  echo "二进制更新完成: $INSTALL_ROOT/bin"
+  exit 0
+fi
 
 if [[ $# -ge 3 && "$2" == "--remove-service" ]]; then
   DOMAIN="$1"

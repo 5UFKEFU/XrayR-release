@@ -72,6 +72,25 @@ sudo bash install-aobai-node.sh sg1.xinhuanet.network --remove-service 443
 移除操作会读取 `etc/deployment.json`，重新生成其余服务的完整配置并清理
 不再使用的 Nginx 前端。至少需要保留一个服务。
 
+## 只更新二进制
+
+已部署节点只需替换可执行文件、保留全部配置与参数时：
+
+```bash
+sudo bash install-aobai-node.sh --update-binaries
+# 或指定安装目录
+sudo bash install-aobai-node.sh --update-binaries \
+  --install-root /home/jeff/aobai-node
+```
+
+该模式会下载当前脚本锁定的发布包，只覆盖 `bin/` 中的
+`sbox-server-embedded`、`redis-server-embedded`、`redis-cli-embedded`、
+`speedtestd`、`haproxy`，然后重启 `aobai-node-redis`、
+`aobai-node-speedtestd`、`aobai-node-sbox`。不会改动
+`etc/deployment.json`、业务配置、证书、env、systemd unit 或 crontab。
+需要先有一次完整部署（存在 `etc/deployment.json`）。
+可用环境变量 `AOBAI_ARCHIVE_URL` 覆盖发布包地址。
+
 ## Cloudflare DNS 证书
 
 域名尚未创建 A 记录，或者服务器无法开放 80 端口时，使用 Cloudflare
