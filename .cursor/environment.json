@@ -1,0 +1,4 @@
+{
+  "name": "XrayR-release",
+  "install": "bash .cursor/install.sh"
+}
