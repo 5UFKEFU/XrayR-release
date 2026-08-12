@@ -786,6 +786,28 @@ fi
 }
 chmod 0755 "$INSTALL_ROOT/tools/report_online_real.sh"
 chown root:root "$INSTALL_ROOT/tools/report_online_real.sh"
+# Traffic watermark hygiene: prevent SSPanel report stall after restart
+mkdir -p "$INSTALL_ROOT/tools"
+for _wm in clear_monitor_watermarks_on_start.sh heal_traffic_watermarks.py; do
+  if [[ ! -f "$INSTALL_ROOT/tools/$_wm" ]]; then
+    # Prefer archive copy; fall back to raw.githubusercontent companion files
+    if [[ -f "$(dirname "$0")/$_wm" ]]; then
+      cp "$(dirname "$0")/$_wm" "$INSTALL_ROOT/tools/$_wm"
+    else
+      curl -fsSL "$REPO_RAW/$_wm" -o "$INSTALL_ROOT/tools/$_wm" || true
+    fi
+  fi
+  [[ -f "$INSTALL_ROOT/tools/$_wm" ]] && chmod 0755 "$INSTALL_ROOT/tools/$_wm"
+done
+if [[ -x "$INSTALL_ROOT/tools/clear_monitor_watermarks_on_start.sh" ]]; then
+  mkdir -p /etc/systemd/system/aobai-node-sbox.service.d
+  cat >/etc/systemd/system/aobai-node-sbox.service.d/watermark.conf <<UNIT
+[Service]
+ExecStartPre=$INSTALL_ROOT/tools/clear_monitor_watermarks_on_start.sh
+UNIT
+  systemctl daemon-reload
+fi
+
 online_cron="* * * * * sudo -n $INSTALL_ROOT/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report"
 {
   crontab -u "$RUN_USER" -l 2>/dev/null |
