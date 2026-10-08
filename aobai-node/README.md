@@ -106,28 +106,52 @@ bash install-aobai-node.sh uk4.xinhuanet.network \
   --email admin@example.com
 ```
 
-Token 只需授予目标 Zone 的 `DNS:Edit` 权限。脚本会将 Token 直接写入
-部署用户的 `crontab -l` 命令。Certbot 运行期间只在内存文件系统 `/run`
-临时生成权限为 `600` 的凭证，运行结束立即删除，不长期保存凭证文件。
-Token 会同时出现在 shell history 和用户 crontab 中。
+Token 只需授予目标 Zone 的 `DNS:Edit` 权限。安装器把 Token 保存到 root
+专用文件 `/etc/aobai-node/cloudflare.token`（权限 `600`），不再写进任何
+crontab。Certbot 运行期间只在内存文件系统 `/run` 临时生成权限为 `600` 的
+凭证，运行结束立即删除。注意直接在命令行传 Token 会留在 shell history。
 
-用户 crontab 每周一 03:17 执行续签检查。Certbot 只在证书进入续签窗口
-时真正续签；成功后会同步项目证书、无中断 reload Nginx，并重启 sbox。
-Cloudflare DNS 验证期间不需要停止或重启 Nginx。
+续签由 root 的 `/etc/cron.d/aobai-cert-renew` 每周一 03:17 执行
+`/usr/local/sbin/aobai-cert-renew`（日志 `/var/log/aobai-cert-renew.log`），
+不依赖运行用户的 sudo 权限；安装器会删除旧版写在运行用户 crontab 里的
+`sudo -n aobai-cert-renew` 任务。Certbot 只在证书进入续签窗口时真正续签；
+成功后会同步项目证书、无中断 reload Nginx，并重启 sbox。Cloudflare DNS
+验证期间不需要停止或重启 Nginx。
 
 ## 在线人数上报
 
-安装器会把 `tools/report_online_real.sh` 部署为 root 所有、由节点运行用户
-通过 `sudo -n` 执行，并在该用户的 `crontab -l` 中加入每分钟任务。脚本从
-本机 SSM API 连续采集两次按用户、按入站的流量计数，只把采样期间有实际
-字节或数据包增量的用户续入 5 分钟在线窗口，再按入站 Tag 的节点 ID 分别
-去重上报。不能使用 SSM 的 `tcpSessions` / `udpSessions` 判断在线，因为它们
-是进程启动以来的累计连接次数。迁移期间还会读取仍在运行的旧 XrayR 访问
-日志，将近 5 分钟的旧协议用户与新协议用户合并后只提交一次，避免新旧计划
-任务互相覆盖。
+安装器把 `tools/report_online_real.sh` 加进节点运行用户的 `crontab -l`
+每分钟执行，**不使用 sudo**：
+
+```
+* * * * * <安装目录>/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report
+```
+
+脚本只需读取 `etc/deployment.json`（安装器设为 `root:<运行用户> 0640`）和
+`env/aobai-node.env`（运行用户 `600`）。上报认证串不写在仓库里，而是放在
+env 文件的 `ONLINE_REPORT_AUTH`，安装时用 `--online-report-auth` 传入（已有
+部署重装时自动保留），并通过 `X-Report-Auth` 请求头发送，不出现在 URL 里。
+
+脚本从本机 SSM API（`MULTI_SSM_PORT`，默认 28912）的 `hysteria2`、
+`https-connect`、`vless-xray` 三类入站连续采集两次按用户、按入站的流量计数，
+采样期间有字节/数据包增量、或当前仍有活动连接（`tcpActiveConnections` /
+`udpActiveConnections`）的用户续入 5 分钟在线窗口；按面板节点 `server` 合并
+同一服务器的多个节点 ID / 协议，对用户 ID 去重后每个 server 只上报一次。
+不能使用 SSM 的 `tcpSessions` / `udpSessions` 判断在线，因为它们是进程启动
+以来的累计连接次数。迁移期间还会读取仍在运行的旧 XrayR 访问日志（有读权限
+时），将近 5 分钟的旧协议用户与新协议用户合并后只提交一次。
 
 迁移旧服务器时，安装器会删除 root crontab 中调用旧
 `report_online_real.sh` 或 `report_xray_online.py` 的任务，避免重复上报。
+
+## 监控接口与水位修复工具
+
+监控接口（`MULTI_MONITOR_PORT`，默认 28910）只监听 `MONITOR_BIND_IP`，并要求
+`MONITOR_AUTH_TOKEN`（`Authorization: Bearer <token>` 或 `X-Monitor-Token`）。
+安装器会保留 env 文件中已有的 token，没有时自动生成。
+`tools/heal_traffic_watermarks.py` 默认从 `env/aobai-node.env` 读取地址和
+token（可用 `--sessions-url`、`--token`、`--env-file` 或同名环境变量覆盖），
+不带 `--apply` 时只读检查。
 
 ## 部署前提
 
@@ -135,6 +159,6 @@ Cloudflare DNS 验证期间不需要停止或重启 Nginx。
 - HTTP-01 模式要求域名 A 记录指向服务器，并放行 80 端口。
 - Cloudflare DNS-01 模式申请证书时不要求 A 记录或开放 80 端口。
 - 服务投入使用前仍需为域名配置正确的 A 记录并放行业务端口。
-- 当前用户可以使用 sudo。
+- 执行安装器的用户可以使用 sudo（仅安装时需要；日常上报与续签不依赖 sudo）。
 
 发布包不包含证书、Cloudflare Token、面板私钥或任何服务器运行数据。

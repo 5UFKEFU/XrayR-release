@@ -10,6 +10,7 @@ INSTALL_ROOT="${INSTALL_ROOT:-}"
 CERT_MODE="${CERT_MODE:-letsencrypt}"
 LE_EMAIL="${LE_EMAIL:-}"
 CLOUDFLARE_TOKEN="${CLOUDFLARE_TOKEN:-}"
+ONLINE_REPORT_AUTH="${ONLINE_REPORT_AUTH:-}"
 PREPARE_ONLY=0
 EXISTING_ACTION="${EXISTING_ACTION:-ask}"
 
@@ -42,7 +43,12 @@ usage() {
   --mu-key KEY          SSPanel mu_key，默认读取 MU_KEY，未设置时为 5uf5uf
   --install-root DIR    安装目录，默认 /home/<sudo调用者>/aobai-node
   --cert-mode MODE      letsencrypt、cloudflare 或 existing
-  --cloudflare-token T  Cloudflare API Token（直接写入用户 crontab 命令）
+  --cloudflare-token T  Cloudflare API Token（保存到 root 专用文件
+                        /etc/aobai-node/cloudflare.token，权限 600）
+  --online-report-auth A
+                        在线人数上报认证串，写入 env/aobai-node.env 的
+                        ONLINE_REPORT_AUTH（也可用同名环境变量；已有部署
+                        未传时保留原值）
   --email EMAIL         Let's Encrypt 邮箱
   --prepare-only        只下载、解压和校验，不生成配置、不启动
   --existing-action A  已有部署时的处理方式：append（推荐）、overwrite 或 abort。
@@ -200,6 +206,7 @@ while [[ $# -gt 0 ]]; do
     --install-root) INSTALL_ROOT="${2:?}"; shift 2 ;;
     --cert-mode) CERT_MODE="${2:?}"; shift 2 ;;
     --cloudflare-token) CLOUDFLARE_TOKEN="${2:?}"; shift 2 ;;
+    --online-report-auth) ONLINE_REPORT_AUTH="${2:?}"; shift 2 ;;
     --email) LE_EMAIL="${2:?}"; shift 2 ;;
     --prepare-only) PREPARE_ONLY=1; shift ;;
     --existing-action) EXISTING_ACTION="${2:?}"; shift 2 ;;
@@ -214,6 +221,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   [[ -n "$INSTALL_ROOT" ]] && sudo_args+=(--install-root "$INSTALL_ROOT")
   [[ -n "$LE_EMAIL" ]] && sudo_args+=(--email "$LE_EMAIL")
   [[ -n "$CLOUDFLARE_TOKEN" ]] && sudo_args+=(--cloudflare-token "$CLOUDFLARE_TOKEN")
+  [[ -n "$ONLINE_REPORT_AUTH" ]] && sudo_args+=(--online-report-auth "$ONLINE_REPORT_AUTH")
   [[ "$PREPARE_ONLY" == 1 ]] && sudo_args+=(--prepare-only)
   sudo_args+=(--existing-action "$EXISTING_ACTION")
   exec sudo -E bash "$0" "${sudo_args[@]}"
@@ -550,7 +558,20 @@ python3 "$INSTALL_ROOT/tools/configure.py" \
   --panel-url "$PANEL_URL" --mu-key "$MU_KEY" \
   --bind-ip "$PUBLIC_IP" --monitor-ip "$MONITOR_IP"
 
-cat >"$INSTALL_ROOT/env/aobai-node.env" <<EOF
+# 节点私密配置不进仓库：重装/追加时保留已有值，未提供时自动生成监控 token。
+env_file="$INSTALL_ROOT/env/aobai-node.env"
+existing_env_value() {
+  [[ -f "$env_file" ]] || return 0
+  sed -n "s/^$1=//p" "$env_file" | tail -n 1
+}
+MONITOR_AUTH_TOKEN="${MONITOR_AUTH_TOKEN:-$(existing_env_value MONITOR_AUTH_TOKEN)}"
+[[ -n "$MONITOR_AUTH_TOKEN" ]] || MONITOR_AUTH_TOKEN="$(openssl rand -hex 24)"
+ONLINE_REPORT_AUTH="${ONLINE_REPORT_AUTH:-$(existing_env_value ONLINE_REPORT_AUTH)}"
+if [[ -z "$ONLINE_REPORT_AUTH" ]]; then
+  echo "警告：未提供 --online-report-auth，在线人数上报将被跳过（可稍后写入 $env_file 的 ONLINE_REPORT_AUTH）。" >&2
+fi
+mkdir -p "$INSTALL_ROOT/env"
+(umask 077; cat >"$env_file.tmp" <<EOF
 AOBAI_ROOT=$INSTALL_ROOT
 PUBLIC_BIND_IP=0.0.0.0
 AOBAI_BIND_IP=0.0.0.0
@@ -562,8 +583,17 @@ MULTI_SSM_PORT=28912
 NODE_TLS_HOST=$DOMAIN
 CDN_XHTTP_HOST=$DOMAIN
 HTTPS_CONNECT_DIRECT_HOST=$DOMAIN
+MONITOR_AUTH_TOKEN=$MONITOR_AUTH_TOKEN
+ONLINE_REPORT_AUTH=$ONLINE_REPORT_AUTH
 EOF
-chown "$RUN_USER:$RUN_USER" "$INSTALL_ROOT/env/aobai-node.env"
+)
+chown "$RUN_USER:$RUN_USER" "$env_file.tmp"
+chmod 0600 "$env_file.tmp"
+mv -f "$env_file.tmp" "$env_file"
+
+# 在线上报脚本以运行用户身份（无 sudo）读取部署状态；其余用户不可读。
+chown "root:$RUN_USER" "$state_file"
+chmod 0640 "$state_file"
 
 cat >"$INSTALL_ROOT/etc/redis/redis.conf" <<EOF
 bind 127.0.0.1
@@ -744,10 +774,16 @@ EOF
 
   cat >/usr/local/sbin/aobai-cert-renew <<'EOF'
 #!/usr/bin/env bash
+# 由 root 的 /etc/cron.d/aobai-cert-renew 调用。Cloudflare token 优先取
+# 第一个参数（兼容旧调用），否则读 root 专用文件 /etc/aobai-node/cloudflare.token。
 set -euo pipefail
 credentials=/run/aobai-node-cloudflare.ini
+token_file=/etc/aobai-node/cloudflare.token
 cloudflare_token="${1:-}"
 [[ $# -gt 0 ]] && shift
+if [[ -z "$cloudflare_token" && -r "$token_file" ]]; then
+  cloudflare_token="$(tr -d '[:space:]' <"$token_file")"
+fi
 cleanup() {
   rm -f "$credentials"
 }
@@ -763,16 +799,29 @@ fi
 EOF
   chmod 0755 /usr/local/sbin/aobai-cert-renew
 
-  if [[ "$CERT_MODE" == "cloudflare" ]]; then
-    cron_command="17 3 * * 1 sudo -n /usr/local/sbin/aobai-cert-renew '$CLOUDFLARE_TOKEN' # aobai-node-cert-renew"
-  else
-    cron_command="17 3 * * 1 sudo -n /usr/local/sbin/aobai-cert-renew # aobai-node-cert-renew"
+  if [[ "$CERT_MODE" == "cloudflare" && -n "$CLOUDFLARE_TOKEN" ]]; then
+    install -d -m 0700 /etc/aobai-node
+    (umask 077; printf '%s\n' "$CLOUDFLARE_TOKEN" >/etc/aobai-node/cloudflare.token)
+    chmod 0600 /etc/aobai-node/cloudflare.token
+  elif [[ "$CERT_MODE" != "cloudflare" ]]; then
+    rm -f /etc/aobai-node/cloudflare.token
   fi
-  {
-    crontab -u "$RUN_USER" -l 2>/dev/null |
-      grep -v 'aobai-node-cert-renew' || true
-    echo "$cron_command"
-  } | crontab -u "$RUN_USER" -
+  # 续签以 root 身份由 /etc/cron.d 执行，不依赖运行用户的 sudo 权限，
+  # 也不把 token 写进任何 crontab。
+  cat >/etc/cron.d/aobai-cert-renew <<'EOF'
+# aobai-node certificate renewal (managed by install-aobai-node.sh)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+17 3 * * 1 root /usr/local/sbin/aobai-cert-renew >>/var/log/aobai-cert-renew.log 2>&1
+EOF
+  chmod 0644 /etc/cron.d/aobai-cert-renew
+  # 移除旧版写在运行用户 crontab 里的 sudo 续签任务（可能含明文 token）。
+  if crontab -u "$RUN_USER" -l 2>/dev/null | grep -q 'aobai-node-cert-renew'; then
+    {
+      crontab -u "$RUN_USER" -l 2>/dev/null |
+        grep -v 'aobai-node-cert-renew' || true
+    } | crontab -u "$RUN_USER" -
+  fi
 
   rm -f /etc/cron.d/aobai-node-cert-renew
   rm -f /etc/letsencrypt/credentials/aobai-node-cloudflare.ini
@@ -789,12 +838,14 @@ chown root:root "$INSTALL_ROOT/tools/report_online_real.sh"
 # Traffic watermark hygiene: prevent SSPanel report stall after restart
 mkdir -p "$INSTALL_ROOT/tools"
 for _wm in clear_monitor_watermarks_on_start.sh heal_traffic_watermarks.py; do
-  if [[ ! -f "$INSTALL_ROOT/tools/$_wm" ]]; then
-    # Prefer archive copy; fall back to raw.githubusercontent companion files
-    if [[ -f "$(dirname "$0")/$_wm" ]]; then
+  # Prefer the current repo copy (keeps tool fixes in sync); fall back to the
+  # copy next to the installer or the one shipped in the archive.
+  if curl -fsSL "$REPO_RAW/$_wm" -o "$INSTALL_ROOT/tools/$_wm.new"; then
+    mv -f "$INSTALL_ROOT/tools/$_wm.new" "$INSTALL_ROOT/tools/$_wm"
+  else
+    rm -f "$INSTALL_ROOT/tools/$_wm.new"
+    if [[ ! -f "$INSTALL_ROOT/tools/$_wm" && -f "$(dirname "$0")/$_wm" ]]; then
       cp "$(dirname "$0")/$_wm" "$INSTALL_ROOT/tools/$_wm"
-    else
-      curl -fsSL "$REPO_RAW/$_wm" -o "$INSTALL_ROOT/tools/$_wm" || true
     fi
   fi
   [[ -f "$INSTALL_ROOT/tools/$_wm" ]] && chmod 0755 "$INSTALL_ROOT/tools/$_wm"
@@ -808,7 +859,8 @@ UNIT
   systemctl daemon-reload
 fi
 
-online_cron="* * * * * sudo -n $INSTALL_ROOT/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report"
+# 运行用户直接执行（不走 sudo）；脚本只需读 deployment.json(0640) 与 env 文件。
+online_cron="* * * * * $INSTALL_ROOT/tools/report_online_real.sh >> /tmp/report_online_real.log 2>&1 # aobai-online-report"
 {
   crontab -u "$RUN_USER" -l 2>/dev/null |
     grep -Ev 'aobai-online-report|report_online_real\.sh' || true

@@ -18,13 +18,51 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
-DEFAULT_REDIS = ["/home/ops/aobai-node/bin/redis-cli-embedded", "-p", "6382"]
-DEFAULT_SESSIONS = "http://127.0.0.1:28910/api/v1/sessions/sessions"
+# tools/ 的上一级就是安装目录（例如 /home/ops/aobai-node）。
+DEFAULT_ROOT = os.environ.get(
+    "AOBAI_ROOT",
+    os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")),
+)
 PREFIX = "sbox:5uf-multi:monitor:proto:"
+SESSIONS_PATH = "/api/v1/sessions/sessions"
+
+
+def load_env_file(path: str) -> dict:
+    values: dict = {}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key.startswith("export "):
+                    key = key[7:].strip()
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+                values[key] = value
+    except FileNotFoundError:
+        pass
+    return values
+
+
+def setting(name: str, file_env: dict, default: str = "") -> str:
+    """进程环境变量优先，其次 env/aobai-node.env，最后默认值。"""
+    value = os.environ.get(name) or file_env.get(name) or ""
+    return value or default
+
+
+def mask(value: str) -> str:
+    value = str(value or "")
+    return value[:8] + "…" if len(value) > 8 else value
 
 
 def redis(args: list[str], redis_bin: list[str]) -> str:
@@ -32,9 +70,21 @@ def redis(args: list[str], redis_bin: list[str]) -> str:
     return out.strip()
 
 
-def load_sessions(url: str) -> list[dict]:
-    with urllib.request.urlopen(url, timeout=10) as resp:
-        data = json.load(resp)
+def load_sessions(url: str, token: str) -> list[dict]:
+    headers = {"User-Agent": "aobai-heal-watermarks/2"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        headers["X-Monitor-Token"] = token
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise SystemExit(
+                f"monitor API 拒绝访问 (HTTP {error.code})：检查 MONITOR_AUTH_TOKEN"
+            )
+        raise
     return (data.get("data") or {}).get("sessions") or data.get("sessions") or []
 
 
@@ -48,7 +98,7 @@ def heal_user(uuid: str, protocol: str, inbound_tag: str, live_tx: int, live_rx:
     field = tag_key(protocol, inbound_tag)
     raw = redis(["HGET", key, field], redis_bin)
     result = {
-        "uuid": uuid,
+        "uuid": mask(uuid),
         "field": field,
         "live_tx": live_tx,
         "live_rx": live_rx,
@@ -88,12 +138,30 @@ def heal_user(uuid: str, protocol: str, inbound_tag: str, live_tx: int, live_rx:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="Write Redis changes")
-    ap.add_argument("--sessions-url", default=DEFAULT_SESSIONS)
-    ap.add_argument("--redis-cli", default=",".join(DEFAULT_REDIS))
+    ap.add_argument("--root", default=DEFAULT_ROOT, help="aobai-node 安装目录")
+    ap.add_argument("--env-file", default=None,
+                    help="默认 <root>/env/aobai-node.env")
+    ap.add_argument("--sessions-url", default=None,
+                    help="默认 http://$MONITOR_BIND_IP:$MULTI_MONITOR_PORT" + SESSIONS_PATH)
+    ap.add_argument("--token", default=None,
+                    help="默认读取 MONITOR_AUTH_TOKEN（环境变量或 env 文件）")
+    ap.add_argument("--redis-cli", default=None,
+                    help="逗号分隔，默认 <root>/bin/redis-cli-embedded,-p,$AOBAI_REDIS_PORT")
     args = ap.parse_args()
-    redis_bin = args.redis_cli.split(",")
 
-    sessions = load_sessions(args.sessions_url)
+    env_file = args.env_file or os.path.join(args.root, "env", "aobai-node.env")
+    file_env = load_env_file(env_file)
+    host = setting("MONITOR_BIND_IP", file_env, "127.0.0.1")
+    port = setting("MULTI_MONITOR_PORT", file_env, "28910")
+    sessions_url = args.sessions_url or f"http://{host}:{port}{SESSIONS_PATH}"
+    token = args.token if args.token is not None else setting("MONITOR_AUTH_TOKEN", file_env)
+    redis_port = setting("AOBAI_REDIS_PORT", file_env, "6382")
+    redis_cli = args.redis_cli or ",".join(
+        [os.path.join(args.root, "bin", "redis-cli-embedded"), "-p", redis_port]
+    )
+    redis_bin = redis_cli.split(",")
+
+    sessions = load_sessions(sessions_url, token)
     healed = []
     ok = 0
     missing = 0
@@ -122,6 +190,8 @@ def main() -> int:
 
     summary = {
         "apply": bool(args.apply),
+        "sessions_url": sessions_url,
+        "auth": "token" if token else "none",
         "sessions": len(sessions),
         "ok": ok,
         "missing_tag_key": missing,
