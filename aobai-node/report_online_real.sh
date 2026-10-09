@@ -76,7 +76,10 @@ api_host = setting("API_HOST", "5ufradius.5ufkefu.com")
 auth = setting("ONLINE_REPORT_AUTH") or setting("API_AUTH")
 ssm_protocols = tuple(
     item.strip()
-    for item in setting("SSM_PROTOCOLS", "hysteria2,https-connect,vless-xray").split(",")
+    for item in setting(
+        "SSM_PROTOCOLS",
+        "hysteria2,https-connect,vless-xray,trojan,naive,anytls,vless,shadowsocks,tuic",
+    ).split(",")
     if item.strip()
 )
 
@@ -100,6 +103,19 @@ except PermissionError:
 panel_url = state["panel_url"].rstrip("/")
 mu_key = state["mu_key"]
 node_ids = list(dict.fromkeys(int(value) for value in state["node_ids"]))
+# 同一批节点 ID 可能被多台机器部署（例如迁移后的旧机仍保留配置），只让真正
+# 承载流量的那台上报：ONLINE_REPORT_EXCLUDE_NODES=185,186 跳过这些节点 ID；
+# ONLINE_REPORT_NODES=144,193 则只上报列出的节点 ID。
+def _id_list(name):
+    return {int(x) for x in re.split(r"[,\s]+", setting(name)) if x.strip().isdigit()}
+only_nodes = _id_list("ONLINE_REPORT_NODES")
+skip_nodes = _id_list("ONLINE_REPORT_EXCLUDE_NODES")
+if only_nodes:
+    node_ids = [n for n in node_ids if n in only_nodes]
+node_ids = [n for n in node_ids if n not in skip_nodes]
+if not node_ids:
+    print(f"{datetime.datetime.now():%F %T} nothing to report (all node IDs excluded)")
+    raise SystemExit(0)
 
 
 def panel_get(path):

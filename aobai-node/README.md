@@ -162,3 +162,13 @@ token（可用 `--sessions-url`、`--token`、`--env-file` 或同名环境变量
 - 执行安装器的用户可以使用 sudo（仅安装时需要；日常上报与续签不依赖 sudo）。
 
 发布包不包含证书、Cloudflare Token、面板私钥或任何服务器运行数据。
+
+### 在线人数上报补充（2026-10-09）
+
+- `SSM_PROTOCOLS` 默认值扩展为 `hysteria2,https-connect,vless-xray,trojan,naive,anytls,vless,shadowsocks,tuic`，
+  只跑 trojan（如 hk8）或 naive（如 hk9）的节点不再报 0；不存在的端点会被跳过。
+- 同一批节点 ID 被多台机器部署时（迁移后旧机仍保留配置），在非主力机器的 env 里设置
+  `ONLINE_REPORT_EXCLUDE_NODES=185,186,...` 跳过这些节点 ID，或用 `ONLINE_REPORT_NODES=144,193`
+  只上报列出的节点 ID，避免两台机器轮流覆盖同一服务器的在线数。
+- `heal_traffic_watermarks.py --apply` 已加确认开关：该工具会把正常推进中的水位误判为卡住，
+  清零后导致整段流量重复上报。默认只读排查，确需写入时加 `--i-know-this-double-reports`。

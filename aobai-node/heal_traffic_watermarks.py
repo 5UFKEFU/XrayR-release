@@ -138,6 +138,8 @@ def heal_user(uuid: str, protocol: str, inbound_tag: str, live_tx: int, live_rx:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="Write Redis changes")
+    ap.add_argument("--i-know-this-double-reports", action="store_true",
+                    help="--apply 的确认开关（见下方警告）")
     ap.add_argument("--root", default=DEFAULT_ROOT, help="aobai-node 安装目录")
     ap.add_argument("--env-file", default=None,
                     help="默认 <root>/env/aobai-node.env")
@@ -148,6 +150,14 @@ def main() -> int:
     ap.add_argument("--redis-cli", default=None,
                     help="逗号分隔，默认 <root>/bin/redis-cli-embedded,-p,$AOBAI_REDIS_PORT")
     args = ap.parse_args()
+    # 警告（2026-10-09 jp4 实测）：本工具用单个会话的累计值对比按用户+tag 汇总的
+    # last_reported 水位，多会话/重连的用户会被误判为“卡住”。--apply 把这些水位清零后，
+    # 下一轮 SSPanel 上报会把整段累计流量重新上报一遍（jp4 一次多报约 20GB）。
+    # 只读模式可用于排查；除非逐个核实确实是重启后水位卡死，否则不要 --apply。
+    if args.apply and not args.i_know_this_double_reports:
+        print("refusing --apply: false positives cause double-reported traffic; "
+              "re-run with --i-know-this-double-reports after verifying each user", file=sys.stderr)
+        return 2
 
     env_file = args.env_file or os.path.join(args.root, "env", "aobai-node.env")
     file_env = load_env_file(env_file)
