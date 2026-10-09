@@ -324,13 +324,23 @@ for node_id in list(old_counts):
         for item in combined.get(node_id, set())
     }
 
-by_server = {}
-for node_id in node_ids:
-    by_server.setdefault(servers.get(node_id) or "", []).append(node_id)
+# 默认按节点 ID 分别上报（面板 update_online 支持 node_id 后，同名多节点如 jp4
+# 211-223 各自更新自己的 server 行）。ONLINE_REPORT_PER_NODE=0 退回旧的“同名
+# 合并、按 name 更新一行”模式（面板未升级时使用）。
+per_node = setting("ONLINE_REPORT_PER_NODE", "1").strip().lower() not in ("0", "false", "no")
+by_server = []
+if per_node:
+    for node_id in node_ids:
+        by_server.append((servers.get(node_id) or "", [node_id]))
+else:
+    grouped = {}
+    for node_id in node_ids:
+        grouped.setdefault(servers.get(node_id) or "", []).append(node_id)
+    by_server = list(grouped.items())
 
 failures = 0
 stamp = f"{datetime.datetime.now():%F %T}"
-for server, ids in by_server.items():
+for server, ids in by_server:
     if not server:
         print(f"{stamp} nodes={','.join(map(str, ids))} error=missing-server")
         failures += 1
@@ -338,11 +348,14 @@ for server, ids in by_server.items():
     users = set().union(*(combined.get(i, set()) for i in ids))
     new_users = set().union(*(new_counts.get(i, set()) for i in ids))
     legacy_users = set().union(*(old_counts.get(i, set()) for i in ids))
-    params = urllib.parse.urlencode({
+    query = {
         "api": "update_online",
         "server": server,
         "online": str(len(users)),
-    })
+    }
+    if per_node:
+        query["node_id"] = str(ids[0])
+    params = urllib.parse.urlencode(query)
     url = f"http://{api_host}/5uf_api/client_online.php?{params}"
     # 认证串放在请求头里，不进 URL，避免出现在服务端访问日志。
     request = urllib.request.Request(url, headers={

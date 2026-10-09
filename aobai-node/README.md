@@ -172,3 +172,5 @@ token（可用 `--sessions-url`、`--token`、`--env-file` 或同名环境变量
   只上报列出的节点 ID，避免两台机器轮流覆盖同一服务器的在线数。
 - `heal_traffic_watermarks.py --apply` 已加确认开关：该工具会把正常推进中的水位误判为卡住，
   清零后导致整段流量重复上报。默认只读排查，确需写入时加 `--i-know-this-double-reports`。
+- 默认按节点 ID 分别上报（`node_id` 参数，面板 update_online 按 id 更新），同名多节点（如 jp4 的 211-223）
+  各自有在线数；面板未升级时可设 `ONLINE_REPORT_PER_NODE=0` 退回按 server 名合并上报。
