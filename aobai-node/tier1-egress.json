@@ -3,7 +3,7 @@
     "type": "vless",
     "server": "uk1.xinhuanet.network",
     "server_port": 4433,
-    "uuid": "481c2558-b091-4257-b7c6-8c00a1bb4bec",
+    "uuid": "REPLACE_WITH_RELAY_UUID_UK",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -20,7 +20,7 @@
     "type": "vless",
     "server": "usa1.xinhuanet.network",
     "server_port": 4433,
-    "uuid": "3fed2605-a7ce-46c1-b043-39b9062590d2",
+    "uuid": "REPLACE_WITH_RELAY_UUID_USA",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -37,7 +37,7 @@
     "type": "vless",
     "server": "139.162.74.90",
     "server_port": 4433,
-    "uuid": "11980e8c-f89e-4ce9-be43-f9acb9b9d944",
+    "uuid": "REPLACE_WITH_RELAY_UUID_JP",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -57,7 +57,7 @@
     "type": "vless",
     "server": "sg1.xinhuanet.network",
     "server_port": 10443,
-    "uuid": "735c7973-2359-48fd-8625-aba8dc5fbaea",
+    "uuid": "REPLACE_WITH_RELAY_UUID_SG",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -74,7 +74,7 @@
     "type": "vless",
     "server": "tw1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -91,7 +91,7 @@
     "type": "vless",
     "server": "vn1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -108,7 +108,7 @@
     "type": "vless",
     "server": "kr1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -125,7 +125,7 @@
     "type": "vless",
     "server": "th1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -142,7 +142,7 @@
     "type": "vless",
     "server": "au1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -159,7 +159,7 @@
     "type": "vless",
     "server": "in1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
@@ -176,7 +176,7 @@
     "type": "vless",
     "server": "de1.xinhuanet.network",
     "server_port": 3389,
-    "uuid": "e5439eae-e82d-412b-a679-3e417fc25b4d",
+    "uuid": "REPLACE_WITH_RELAY_UUID_TIER1_SHARED",
     "flow": "xtls-rprx-vision",
     "tls": {
       "enabled": true,
