@@ -35,7 +35,7 @@
   },
   "jp": {
     "type": "vless",
-    "server": "139.162.74.90",
+    "server": "REPLACE_WITH_JP_RELAY_HOST",
     "server_port": 4433,
     "uuid": "REPLACE_WITH_RELAY_UUID_JP",
     "flow": "xtls-rprx-vision",
